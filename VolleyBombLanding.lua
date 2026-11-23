@@ -323,8 +323,61 @@ local function fpsExplicitLobby(inst)
     end
     return false
 end
+local fpsGameBallNames={
+    ['bowling ball']=true,['default']=true,['volleyball']=true,
+    ['gameball']=true,['game ball']=true,
+    ['matchball']=true,['match ball']=true,
+    ['projectileball']=true,['projectile ball']=true
+}
+local function fpsIsGameplayBall(inst)
+    if not inst or not inst.Parent then return false end
+    local node=inst
+    local depth=0
+    local found=false
+    local decoration=false
+    while node and node~=W and depth<22 do
+        local n=fpsName(node.Name)
+        if fpsLobbyName(n) or n:find('eventnpc',1,true)
+            or n:find('event npc',1,true) or n:find('the fixer',1,true)
+            or n:find('spinwheel',1,true) or n:find('roulette',1,true)
+            or n:find('decoration',1,true) or n:find('lobbydecor',1,true) then
+            decoration=true
+        end
+        if node:IsA('Model') and node:FindFirstChildOfClass('Humanoid')
+            and not fpsIsPlayerCharacter(node) then
+            decoration=true
+        end
+        if node:IsA('BasePart') or node:IsA('Model') then
+            if fpsGameBallNames[n] or n=='ball' then
+                found=true
+            end
+        end
+        node=node.Parent
+        depth=depth+1
+    end
+    return found and not decoration
+end
+
+local function fpsProtectBallVisual(inst)
+    if not fpsIsGameplayBall(inst) then return false end
+    local saved=FPS.Originals[inst]
+    if saved then
+        for property,original in pairs(saved) do
+            pcall(function() inst[property]=original end)
+        end
+        FPS.Originals[inst]=nil
+    end
+    local originalAlpha=FPS.HiddenOriginals[inst]
+    if originalAlpha~=nil then
+        pcall(function() inst.LocalTransparencyModifier=originalAlpha end)
+        FPS.HiddenOriginals[inst]=nil
+    end
+    return true
+end
+
 local function fpsProtectedArena(part)
     if not part or not part:IsA('BasePart') then return false end
+    if fpsIsGameplayBall(part) then return true end
     if fpsExplicitLobby(part) then return false end
     if fpsArenaContainer(part) then return true end
     local p=part.Position
@@ -487,7 +540,7 @@ end
 
 local function fpsCullWorldPart(part)
     if not part or not part:IsA('BasePart') or not part.Parent then return false end
-    if fpsProtectedArena(part) then return false end
+    if fpsIsGameplayBall(part) or fpsProtectedArena(part) then return false end
     if fpsInsideLobby(part) then return true end
 
     local pos=part.Position
@@ -559,6 +612,7 @@ end
 local function fpsEssential(inst)
     if not inst or not inst.Parent then return true end
     if inst==folder or inst:IsDescendantOf(folder) then return true end
+    if fpsIsGameplayBall(inst) then return true end
     local node=inst
     local depth=0
     local npc=false
@@ -634,6 +688,10 @@ end
 
 local function fpsProcess(inst)
     if not FPS.Enabled or not inst or not inst.Parent then return end
+    if fpsProtectBallVisual(inst) then
+        FPS.Seen[inst]=true
+        return
+    end
     if FPS.Seen[inst] then return end
     if inst:IsA('TextLabel') and fpsHideSpinText(inst) then
         FPS.Seen[inst]=true
@@ -651,6 +709,9 @@ local function fpsProcess(inst)
     local inLobby=isPart and fpsInsideLobby(inst)
     local cullWorld=isPart and fpsCullWorldPart(inst)
     local essential=fpsEssential(inst)
+    if isPart and not inst.Anchored and not fpsLobbyDecor(inst) then
+        return
+    end
     if essential then
         
         if isPart and cullWorld and inst.Anchored then
