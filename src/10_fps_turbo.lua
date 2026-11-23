@@ -1,6 +1,9 @@
 local FPS={Enabled=false,Generation=0,Revision=0,
     Originals={},BallSkinOriginals={},
     BallRoots=setmetatable({}, {__mode='k'}),WaterParts=setmetatable({}, {__mode='k'}),
+    CacheTargets=setmetatable({}, {__mode='k'}),
+    CachePending=setmetatable({}, {__mode='k'}),
+    CacheReady=false,CacheUses=0,
     Detached={},HiddenOriginals={},
     Seen={},
     LobbyBounds=nil,LobbyFloorY=nil,LobbyOrigin=nil,
@@ -37,6 +40,7 @@ local function fpsChange(inst,prop,value)
     local ok,old=pcall(function() return inst[prop] end)
     if not ok or old==value then return end
     if pcall(function() inst[prop]=value end) then
+        FPS.CacheTargets[inst]=true
         local saved=FPS.Originals[inst]
         if not saved then saved={} FPS.Originals[inst]=saved end
         if saved[prop]==nil then saved[prop]=old end
@@ -211,7 +215,9 @@ local function fpsSetBallLook(inst,property,value)
     local changes=FPS.BallSkinOriginals[inst]
     if not changes then changes={} FPS.BallSkinOriginals[inst]=changes end
     if changes[property]==nil then changes[property]=old end
-    pcall(function() inst[property]=value end)
+    if pcall(function() inst[property]=value end) then
+        FPS.CacheTargets[inst]=true
+    end
 end
 
 local function fpsNormalizeBall(inst)
@@ -233,11 +239,6 @@ local function fpsNormalizeBall(inst)
         for _,property in ipairs({'ColorMap','NormalMap','MetalnessMap','RoughnessMap'}) do
             fpsSetBallLook(inst,property,'')
         end
-    elseif inst:IsA('ParticleEmitter') or inst:IsA('Trail')
-        or inst:IsA('Beam') or inst:IsA('PointLight')
-        or inst:IsA('SpotLight') or inst:IsA('SurfaceLight')
-        or inst:IsA('Highlight') then
-        fpsSetBallLook(inst,'Enabled',false)
     end
     return true
 end
@@ -517,6 +518,7 @@ local function fpsHide(part)
     end
     local ok,old=pcall(function() return part.LocalTransparencyModifier end)
     if ok and pcall(function() part.LocalTransparencyModifier=1 end) then
+        FPS.CacheTargets[part]=true
         FPS.HiddenOriginals[part]=old
         FPS.Hidden=FPS.Hidden+1
     end
@@ -540,6 +542,7 @@ local function fpsHideSpinText(inst)
     if not (normalized:find('free spin',1,true)
         or normalized:find('freespin',1,true)
         or normalized:find('free spin in',1,true)) then return false end
+    FPS.CacheTargets[inst]=true
     local node=inst.Parent
     while node and node~=W and not node:IsA('ScreenGui') do
         if node:IsA('BillboardGui') or node:IsA('SurfaceGui') then
@@ -859,6 +862,54 @@ local function fpsLoadingProgress(generation,fraction,message)
     if message then loading.Detail.Text=message end
 end
 
+local function fpsReplayCache(generation)
+    fpsLoadingProgress(generation,0.08,'Reaplicando otimizações salvas...')
+    fpsHideTerrainWater()
+    local targets=FPS.CacheTargets
+    local pending=FPS.CachePending
+    local visited=0
+    for inst in pairs(targets) do
+        if stopped or not FPS.Enabled or generation~=FPS.Generation then return end
+        if inst.Parent then
+            fpsProcess(inst)
+        else
+            targets[inst]=nil
+        end
+        visited=visited+1
+        if visited%300==0 then
+            fpsLoadingProgress(generation,0.10+0.58*(visited/(visited+300)))
+            task.wait()
+        end
+    end
+    fpsLoadingProgress(generation,0.72,'Verificando objetos novos...')
+    local checked=0
+    for inst in pairs(pending) do
+        if stopped or not FPS.Enabled or generation~=FPS.Generation then return end
+        if inst.Parent then fpsProcess(inst) end
+        checked=checked+1
+        if checked%350==0 then task.wait() end
+    end
+    FPS.CachePending=setmetatable({}, {__mode='k'})
+    fpsLoadingProgress(generation,0.88,'Atualizando bolas e interfaces...')
+    for _,name in ipairs({'Bowling Ball','Default'}) do
+        local ball=W:FindFirstChild(name)
+        if ball and ball:IsA('BasePart') then
+            fpsProcess(ball)
+            for _,descendant in ipairs(ball:GetDescendants()) do
+                fpsProcess(descendant)
+            end
+        end
+    end
+    local playerGui=me:FindFirstChildOfClass('PlayerGui')
+    if playerGui then
+        for _,inst in ipairs(playerGui:GetDescendants()) do
+            if stopped or not FPS.Enabled or generation~=FPS.Generation then return end
+            if inst:IsA('TextLabel') then fpsProcess(inst) end
+        end
+    end
+    fpsLoadingProgress(generation,1,'Otimização reaplicada')
+end
+
 local function fpsScan(generation)
     fpsLoadingProgress(generation,0.03,'Analisando cenário...')
     fpsHideTerrainWater()
@@ -905,6 +956,9 @@ local function fpsScan(generation)
         end
     end
     table.clear(all)
+    FPS.CacheReady=true
+    FPS.CacheUses=0
+    FPS.CachePending=setmetatable({}, {__mode='k'})
     fpsLoadingProgress(generation,1,'Otimização concluída')
 end
 fpsRestore=function()
@@ -961,7 +1015,14 @@ fpsSetEnabled=function(enabled)
         local generation=FPS.Generation
         fpsLoadingShow()
         task.spawn(function()
-            local ok,err=pcall(fpsScan,generation)
+            local ok,err=pcall(function()
+                if FPS.CacheReady and FPS.CacheUses<4 then
+                    FPS.CacheUses=FPS.CacheUses+1
+                    fpsReplayCache(generation)
+                else
+                    fpsScan(generation)
+                end
+            end)
             if not ok then warn('[VolleyBomb FPS Turbo] '..tostring(err)) end
             if FPS.Generation==generation then fpsLoadingHide() end
         end)
@@ -970,12 +1031,22 @@ fpsSetEnabled=function(enabled)
     end
 end
 links[#links+1]=W.DescendantAdded:Connect(function(inst)
-    if FPS.Enabled then fpsProcess(inst) end
+    if FPS.Enabled then
+        fpsProcess(inst)
+    elseif FPS.CacheReady then
+        FPS.CachePending[inst]=true
+    end
 end)
 local playerGui=me:FindFirstChildOfClass('PlayerGui')
 if playerGui then
     links[#links+1]=playerGui.DescendantAdded:Connect(function(inst)
-        if FPS.Enabled and inst:IsA('TextLabel') then fpsProcess(inst) end
+        if inst:IsA('TextLabel') then
+            if FPS.Enabled then
+                fpsProcess(inst)
+            elseif FPS.CacheReady then
+                FPS.CachePending[inst]=true
+            end
+        end
     end)
 end
 local fpsCosmeticCheckAt=0
