@@ -1,5 +1,6 @@
 local FPS={Enabled=false,Generation=0,Revision=0,
-    Originals={},
+    Originals={},BallSkinOriginals={},
+    BallRoots=setmetatable({}, {__mode='k'}),WaterParts=setmetatable({}, {__mode='k'}),
     Detached={},HiddenOriginals={},
     Seen={},
     LobbyBounds=nil,LobbyFloorY=nil,LobbyOrigin=nil,
@@ -199,6 +200,44 @@ local function fpsProtectBallVisual(inst)
     if originalAlpha~=nil then
         pcall(function() inst.LocalTransparencyModifier=originalAlpha end)
         FPS.HiddenOriginals[inst]=nil
+    end
+    return true
+end
+
+local function fpsSetBallLook(inst,property,value)
+    if not inst or not inst.Parent then return end
+    local ok,old=pcall(function() return inst[property] end)
+    if not ok or old==value then return end
+    local changes=FPS.BallSkinOriginals[inst]
+    if not changes then changes={} FPS.BallSkinOriginals[inst]=changes end
+    if changes[property]==nil then changes[property]=old end
+    pcall(function() inst[property]=value end)
+end
+
+local function fpsNormalizeBall(inst)
+    if not fpsIsGameplayBall(inst) then return false end
+    if inst:IsA('BasePart') then
+        local name=fpsName(inst.Name)
+        if (fpsGameBallNames[name] or name=='ball') and not FPS.BallRoots[inst] then
+            FPS.BallRoots[inst]=true
+        end
+        fpsSetBallLook(inst,'MaterialVariant','')
+        fpsSetBallLook(inst,'Material',Enum.Material.SmoothPlastic)
+        fpsSetBallLook(inst,'Color',Color3.fromRGB(241,243,246))
+        if inst:IsA('MeshPart') then fpsSetBallLook(inst,'TextureID','') end
+    elseif inst:IsA('Decal') or inst:IsA('Texture') then
+        fpsSetBallLook(inst,'Transparency',1)
+    elseif inst:IsA('SpecialMesh') then
+        fpsSetBallLook(inst,'TextureId','')
+    elseif inst:IsA('SurfaceAppearance') then
+        for _,property in ipairs({'ColorMap','NormalMap','MetalnessMap','RoughnessMap'}) do
+            fpsSetBallLook(inst,property,'')
+        end
+    elseif inst:IsA('ParticleEmitter') or inst:IsA('Trail')
+        or inst:IsA('Beam') or inst:IsA('PointLight')
+        or inst:IsA('SpotLight') or inst:IsA('SurfaceLight')
+        or inst:IsA('Highlight') then
+        fpsSetBallLook(inst,'Enabled',false)
     end
     return true
 end
@@ -471,7 +510,11 @@ local function fpsEssential(inst)
 end
 
 local function fpsHide(part)
-    if not part or not part.Parent or FPS.HiddenOriginals[part]~=nil then return end
+    if not part or not part.Parent then return end
+    if FPS.HiddenOriginals[part]~=nil then
+        pcall(function() part.LocalTransparencyModifier=1 end)
+        return
+    end
     local ok,old=pcall(function() return part.LocalTransparencyModifier end)
     if ok and pcall(function() part.LocalTransparencyModifier=1 end) then
         FPS.HiddenOriginals[part]=old
@@ -512,6 +555,80 @@ local function fpsHideSpinText(inst)
         fpsChange(inst,'Visible',false)
     end
     return true
+end
+
+local function fpsWaterName(name)
+    local n=fpsName(name)
+    return n=='water' or n=='sea' or n=='ocean' or n=='waves'
+        or n=='lake' or n=='river' or n=='waterplane'
+        or n=='water plane' or n=='ocean floor' or n=='oceanfloor'
+        or n=='seafloor' or n=='sea floor' or n=='watersurface'
+        or n=='water surface' or n=='seasurface'
+        or n:find('ocean',1,true)~=nil
+        or n:find('watermesh',1,true)~=nil
+        or n:find('water plane',1,true)~=nil
+        or n:find('sea plane',1,true)~=nil
+end
+
+local function fpsIsWaterPart(part)
+    if not part or not part:IsA('BasePart') or not part.Parent then return false end
+    if fpsIsGameplayBall(part) then return false end
+    if fpsWaterName(part.Name) then return true end
+    local parent=part.Parent
+    local depth=0
+    while parent and parent~=W and depth<6 do
+        if fpsWaterName(parent.Name) then return true end
+        if parent:IsA('Model') and parent:FindFirstChildOfClass('Humanoid') then
+            return false
+        end
+        parent=parent.Parent
+        depth=depth+1
+    end
+    local material=part.Material
+    if material==Enum.Material.Water then return true end
+    if not part.Anchored or fpsProtectedArena(part) then return false end
+    local size=part.Size
+    if size.X<150 or size.Z<150 or size.Y>18 then return false end
+    if math.abs(part.CFrame.UpVector.Y)<0.80 then return false end
+    local floorY=FPS.LobbyFloorY
+    if not floorY and FPS.LobbyOrigin then
+        floorY=FPS.LobbyOrigin.Y-4
+    end
+    if not floorY then return false end
+    if part.Position.Y>floorY+8 or part.Position.Y<floorY-90 then
+        return false
+    end
+    local color=part.Color
+    return color.B>0.30 and color.B>color.R*1.20
+        and color.B>color.G*1.03 and color.G>color.R+0.12
+end
+
+local function fpsHideWater(inst)
+    if inst:IsA('BasePart') then
+        FPS.WaterParts[inst]=true
+        fpsHide(inst)
+        fpsChange(inst,'Transparency',1)
+    elseif inst:IsA('Decal') or inst:IsA('Texture') then
+        fpsChange(inst,'Transparency',1)
+    elseif inst:IsA('SurfaceAppearance') then
+        for _,property in ipairs({'ColorMap','NormalMap','MetalnessMap','RoughnessMap'}) do
+            fpsChange(inst,property,'')
+        end
+    elseif inst:IsA('BillboardGui') or inst:IsA('SurfaceGui')
+        or inst:IsA('ParticleEmitter') or inst:IsA('Trail')
+        or inst:IsA('Beam') or inst:IsA('PointLight')
+        or inst:IsA('SpotLight') or inst:IsA('SurfaceLight') then
+        fpsChange(inst,'Enabled',false)
+    end
+end
+
+local function fpsHideTerrainWater()
+    local terrain=W:FindFirstChildOfClass('Terrain')
+    if not terrain then return end
+    fpsChange(terrain,'WaterTransparency',1)
+    fpsChange(terrain,'WaterReflectance',0)
+    fpsChange(terrain,'WaterWaveSize',0)
+    fpsChange(terrain,'WaterWaveSpeed',0)
 end
 
 local function fpsDecorOnly(inst,part)
@@ -625,7 +742,14 @@ local function fpsProcess(inst)
         return
     end
     if fpsProtectBallVisual(inst) then
+        fpsNormalizeBall(inst)
         FPS.Seen[inst]=true
+        return
+    end
+    local waterPart=inst:IsA('BasePart') and inst or fpsWorldPart(inst)
+    if waterPart and fpsIsWaterPart(waterPart) then
+        FPS.Seen[inst]=true
+        fpsHideWater(inst)
         return
     end
     if FPS.Seen[inst] then return end
@@ -737,6 +861,7 @@ end
 
 local function fpsScan(generation)
     fpsLoadingProgress(generation,0.03,'Analisando cenário...')
+    fpsHideTerrainWater()
     local all=W:GetDescendants()
     fpsFindLobbyBounds(all)
     fpsLoadingProgress(generation,0.05,'Ocultando objetos do lobby...')
@@ -800,6 +925,16 @@ fpsRestore=function()
         if not progress then break end
     end
     FPS.Detached={}
+    for inst,props in pairs(FPS.BallSkinOriginals) do
+        if inst then
+            for prop,old in pairs(props) do
+                pcall(function() inst[prop]=old end)
+            end
+        end
+    end
+    FPS.BallSkinOriginals={}
+    FPS.BallRoots=setmetatable({}, {__mode='k'})
+    FPS.WaterParts=setmetatable({}, {__mode='k'})
     for inst,props in pairs(FPS.Originals) do
         if inst then
             for prop,old in pairs(props) do
@@ -843,6 +978,44 @@ if playerGui then
         if FPS.Enabled and inst:IsA('TextLabel') then fpsProcess(inst) end
     end)
 end
+local fpsCosmeticCheckAt=0
+links[#links+1]=Run.Heartbeat:Connect(function(dt)
+    if not FPS.Enabled then
+        fpsCosmeticCheckAt=0
+        return
+    end
+    fpsCosmeticCheckAt=fpsCosmeticCheckAt+dt
+    if fpsCosmeticCheckAt<0.75 then return end
+    fpsCosmeticCheckAt=0
+    fpsHideTerrainWater()
+    for root in pairs(FPS.BallRoots) do
+        if root.Parent and fpsIsGameplayBall(root) then
+            fpsNormalizeBall(root)
+            for _,descendant in ipairs(root:GetDescendants()) do
+                fpsNormalizeBall(descendant)
+            end
+        else
+            FPS.BallRoots[root]=nil
+        end
+    end
+    for _,name in ipairs({'Bowling Ball','Default'}) do
+        local ball=W:FindFirstChild(name)
+        if ball and ball:IsA('BasePart') then
+            fpsNormalizeBall(ball)
+            for _,descendant in ipairs(ball:GetDescendants()) do
+                fpsNormalizeBall(descendant)
+            end
+        end
+    end
+    for part in pairs(FPS.WaterParts) do
+        if part.Parent and fpsIsWaterPart(part) then
+            fpsHide(part)
+            fpsChange(part,'Transparency',1)
+        else
+            FPS.WaterParts[part]=nil
+        end
+    end
+end)
 end 
 
 
