@@ -514,6 +514,24 @@ local function fpsHideSpinText(inst)
     return true
 end
 
+local function fpsDecorOnly(inst,part)
+    if fpsIsGameplayBall(inst) then return false end
+    if part and (fpsIsGameplayBall(part) or fpsProtectedArena(part)) then
+        return false
+    end
+    if fpsExplicitLobby(inst) then return true end
+    if not part then return false end
+    if not fpsCullWorldPart(part) then
+        if part.Anchored and fpsStrongDecorName(part.Name)
+            and not fpsProtectedArena(part) then
+            return true
+        end
+        return false
+    end
+    if part.Anchored then return true end
+    return fpsLobbyDecor(inst)
+end
+
 local function fpsProcess(inst)
     if not FPS.Enabled or not inst or not inst.Parent then return end
     if fpsProtectBallVisual(inst) then
@@ -526,56 +544,36 @@ local function fpsProcess(inst)
         return
     end
     if not inst:IsDescendantOf(W) then return end
-    FPS.Seen[inst]=true
 
     local class=inst.ClassName
     local isPart=inst:IsA('BasePart')
-    
-    
-    local hostPart=fpsWorldPart(inst)
+    local hostPart=isPart and inst or fpsWorldPart(inst)
     if hostPart and fpsProtectedArena(hostPart) then return end
-    local inLobby=isPart and fpsInsideLobby(inst)
-    local cullWorld=isPart and fpsCullWorldPart(inst)
-    local essential=fpsEssential(inst)
-    if isPart and not inst.Anchored and not fpsLobbyDecor(inst) then
-        return
-    end
-    if essential then
-        
-        if isPart and cullWorld and inst.Anchored then
-            local n=fpsName(inst.Name)
-            if fpsFloorPart(inst) or fpsCriticalName(n) then fpsHide(inst) end
-        end
-        return
-    end
+    if fpsEssential(inst) then return end
+
+    local canClean=fpsDecorOnly(inst,hostPart)
+    if not canClean then return end
+    FPS.Seen[inst]=true
 
     if class=='Decal' or class=='Texture' or class=='SurfaceAppearance' then
         fpsDetach(inst)
     elseif class=='SpecialMesh' then
         fpsChange(inst,'TextureId','')
     elseif isPart then
-        local removeLobby=cullWorld or (not FPS.LobbyBounds and fpsLobbyDecor(inst))
-        if removeLobby then
-            fpsHide(inst) 
-            if class=='MeshPart' then fpsChange(inst,'TextureID','') end
-            fpsChange(inst,'MaterialVariant','')
-            fpsChange(inst,'Material',Enum.Material.SmoothPlastic)
-            FPS.Hidden=FPS.Hidden+1
-        elseif inst.Anchored then
-            if class=='MeshPart' then fpsChange(inst,'TextureID','') end
-            fpsChange(inst,'MaterialVariant','')
-            fpsChange(inst,'Material',Enum.Material.SmoothPlastic)
-        end
+        fpsHide(inst)
+        if class=='MeshPart' then fpsChange(inst,'TextureID','') end
+        fpsChange(inst,'MaterialVariant','')
+        fpsChange(inst,'Material',Enum.Material.SmoothPlastic)
     elseif class=='SurfaceGui' or class=='BillboardGui' then
-        if fpsCullWorldInst(inst) or fpsLobbyDecor(inst) then fpsChange(inst,'Enabled',false) end
+        fpsChange(inst,'Enabled',false)
     elseif inst:IsA('GuiObject') then
-        if fpsCullWorldInst(inst) or fpsLobbyDecor(inst) then fpsChange(inst,'Visible',false) end
+        fpsChange(inst,'Visible',false)
     elseif class=='ProximityPrompt' then
-        if fpsCullWorldInst(inst) or fpsLobbyDecor(inst) then fpsChange(inst,'Enabled',false) end
+        fpsChange(inst,'Enabled',false)
     elseif class=='ParticleEmitter' or class=='Beam' or class=='Trail'
         or class=='PointLight' or class=='SpotLight' or class=='SurfaceLight'
         or class=='Highlight' then
-        if fpsCullWorldInst(inst) or fpsLobbyDecor(inst) then fpsChange(inst,'Enabled',false) end
+        fpsChange(inst,'Enabled',false)
     end
 end
 
