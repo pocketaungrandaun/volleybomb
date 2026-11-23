@@ -1,12 +1,12 @@
--- VOLLEYBOMB LANDING v9.8 / AUTO-INICIO CANCELAVEL NO X (SOLARA)
--- Execute no VolleyBomb. Ao clicar X, para o script e cancela a fila de teleportes.
--- Ao iniciar uma versao nova, limpa a fila antiga antes de registrar o novo auto-inicio.
--- Nao depende de URL externa ou arquivo salvo do script no executor.
 
-local CORE = [=[-- VOLLEYBOMB LANDING v9.8
--- Previsao conservadora: rejeita pontos incoerentes e ignora props ocultos.
--- Chao final / sem texto sobre indicador / Dive v8.0 intacto / FPS / Auto-Inicio
--- Preferencias salvas automaticamente (arquivo se disponivel).
+
+
+
+
+local CORE = [=[
+
+
+
 
 local P=game:GetService('Players')
 local R=game:GetService('ReplicatedStorage')
@@ -26,10 +26,10 @@ local C={Main=true,Practice=true,LockOn=false,SmartDive=false,
     ChaseRange=85,ChaseWindow=3.5,StopDistance=11,
     AimDelay=0.06,InputDelay=0.065,LockSpeed=9,
     SafetyLead=0.08, MinNativeLead=0.24,
-    -- Espera por bola futura: independente do ajuste de antecipacao.
-    -- Defesa manual imediata: nao espera o tempo de queda.
+    
+    
     MaxEarlyWait=5.2, EmergencyWindow=0.020,
-    SteerDive=true, -- direcao do dive baseada no marcador congelado
+    SteerDive=true, 
     SpikeDirection=false,SpikeKey='X',
     FPSBoost=true}
 local env=_G
@@ -37,7 +37,7 @@ if type(getgenv)=='function' then
     local ok,e=pcall(getgenv)
     if ok and type(e)=='table' then env=e end
 end
--- Preferencias estaveis: alternancias, tempo interno e posicoes da UI.
+
 local saveFile='VolleyBombLanding_settings.json'
 local savedKeys={'LockOn','SmartDive',
     'DiveLead','SpikeDirection','SpikeKey','FPSBoost'}
@@ -55,7 +55,7 @@ local function loadSettings(data)
                 C[key]=math.clamp(value,C.MinLead,C.MaxLead)
             end
         elseif key=='SpikeKey' then
-            -- Teclas de letra; evitar E, movimento e teclas de camera.
+            
             if type(value)=='string' and value:match('^[A-Z]$')
                 and not string.find('WASDE',value,1,true) then
                 C.SpikeKey=value
@@ -74,7 +74,7 @@ local function loadSettings(data)
     end
 end
 
--- Preferencia da sessao e arquivo do executor, se ele tiver readfile.
+
 loadSettings(env.VolleyBombLandingSettings)
 if type(readfile)=='function' then
     pcall(function()
@@ -86,15 +86,15 @@ end
 
 local old=env.VolleyBombLanding
 if type(old)=='table' then
-    -- O script que ainda esta aberto tem valores mais recentes.
+    
     loadSettings(old.Config)
     if type(old.UI)=='table' then loadSettings({UI=old.UI}) end
     if type(old.Stop)=='function' then pcall(old.Stop,'replace') end
 end
--- Indicadores sempre automaticos: preferencia antiga de Main/Practice nao se aplica.
+
 C.Main=true
 C.Practice=true
--- v8.0: E passa intacto; velocidade/frenagem com vetor congelado, sem curvas.
+
 C.SteerDive=true
 
 local function saveSettings()
@@ -144,14 +144,14 @@ local actionKey='VolleyLanding85_E'
 local inputBound=false
 local refreshSmart
 local steerTarget=nil
-local steerDirection=nil -- Vetor fixo durante o impulso, sem curvas bruscas
+local steerDirection=nil 
 local steerUntil=0
 local steerActive=false
 local lastSteerDistance=nil
-local steerPathLength=0 -- comprimento da linha congelada na hora do E
+local steerPathLength=0 
 local steerAnimationSeen=false
 local steerArmedAt=0
-local steerStarted=false       -- somente apos o jogo realmente iniciar o dive
+local steerStarted=false       
 local steerDetectedAt=0
 local steerStartSource=''
 local steerStartPosition=nil
@@ -164,12 +164,12 @@ local function make(class,properties,parent)
     o.Parent=parent
     return o
 end
--- =====================================
--- FPS TURBO v9.8: preservacao de arenas e limpeza local conservadora.
--- NUNCA retira pecas do Workspace: mantem colisao fisica e restaura visual
--- no OFF / X. Remove texturas do mapa, decoro do lobby e pequenos detritos
--- visuais identificados fora da quadra, sem esconder estruturas de jogo.
--- =====================================
+
+
+
+
+
+
 local FPS={Enabled=false,Generation=0,Revision=0,
     Originals={},
     Detached={},HiddenOriginals={},
@@ -239,8 +239,8 @@ local function fpsCriticalName(name)
         or n:find('checkpoint',1,true) or n:find('collider',1,true)
         or n:find('hitbox',1,true) or n:find('indicator',1,true)
 end
--- Alvos com nomes especificos podem ser reconhecidos mesmo se a
--- organizacao do mapa variar entre servidores.
+
+
 local function fpsStrongDecorName(name)
     local n=fpsName(name)
     if strongNameCache[n]~=nil then return strongNameCache[n] end
@@ -286,17 +286,17 @@ local function fpsIsPlayerCharacter(model)
     return yes
 end
 
--- Estas coordenadas sao apenas uma rede de seguranca para o layout
--- observado no log do usuario. Zonas recebidas do servidor e nomes da
--- quadra tem prioridade, mas protecao existe ANTES do primeiro BallState.
+
+
+
 local fallbackArenas={
-    -- Reservado ao terreno da quadra; a antiga area 85x100 invadia o lobby.
-    {x=0,z=12,dx=38,dz=55},   -- Main (limites do jogo observados no BallState)
-    {x=222,z=-6,dx=40,dz=55} -- Practice
+    
+    {x=0,z=12,dx=38,dz=55},   
+    {x=222,z=-6,dx=40,dz=55} 
 }
 local function fpsArenaContainer(inst)
-    -- Nomes genericos (Main, Arena, Game) nao bastam: muitos objetos do
-    -- lobby ficam debaixo destes containers no jogo.
+    
+    
     local node=inst
     local depth=0
     while node and node~=W and depth<18 do
@@ -327,12 +327,12 @@ local function fpsProtectedArena(part)
     if not part or not part:IsA('BasePart') then return false end
     if fpsArenaContainer(part) then return true end
     local p=part.Position
-    -- As zonas reais recebidas do servidor tem prioridade sobre suposicoes.
+    
     if FPS.IsArenaPoint and FPS.IsArenaPoint(p) then return true end
-    -- Um container explicitamente chamado Lobby/Hub nunca deve ser
-    -- confundido com a quadra apenas por estar perto da arena principal.
+    
+    
     if fpsExplicitLobby(part) then return false end
-    -- Fallback estreito antes dos primeiros estados da bola.
+    
     if p.Y>=8 and p.Y<=145 then
         for _,area in ipairs(fallbackArenas) do
             if math.abs(p.X-area.x)<=area.dx
@@ -342,8 +342,8 @@ local function fpsProtectedArena(part)
     return false
 end
 
--- Piso do lobby: verde vivo e horizontal, como no mapa fornecido.
--- Usamos isso apenas para achar a ilha; o piso continua visivel.
+
+
 local function fpsGreenFloor(part)
     if not part:IsA('BasePart') or not part.Anchored then return false end
     local s=part.Size
@@ -460,19 +460,19 @@ local function fpsLobbyDecor(inst)
         node=node.Parent
         depth=depth+1
     end
-    -- Nunca esconder elementos da quadra ou do treino pela busca espacial.
+    
     if arena then return false end
     local nearby=fpsInsideLobby(inst)
     if named and (lobby or nearby or (strong and not FPS.LobbyBounds)) then
         return true
     end
-    -- Objetos com nomes genericos (Part, Mesh, Model, Handle) sao
-    -- capturados pela ilha verde, sem esconder o piso ou as plataformas.
+    
+    
     if lobby or nearby then
         local part=fpsWorldPart(inst)
         if not part or fpsFloorPart(part) then return false end
         if part.Anchored then return true end
-        -- Inclui NPCs do lobby, que geralmente possuem pecas nao ancoradas.
+        
         local parent=part.Parent
         while parent and parent~=W do
             if parent:IsA('Model') and parent:FindFirstChildOfClass('Humanoid') then
@@ -487,15 +487,15 @@ end
 
 local function fpsCullWorldPart(part)
     if not part or not part:IsA('BasePart') or not part.Parent then return false end
-    -- Protege antes de qualquer regra de proximidade: Main e Practice.
+    
     if fpsProtectedArena(part) then return false end
     if fpsInsideLobby(part) then return true end
     local b=FPS.LobbyBounds
     if not b or not FPS.LobbyFloorY or not part.Anchored then return false end
     local p=part.Position
     local s=part.Size
-    -- Fora da ilha, escondemos SOMENTE pequenos detritos / rochas do mar,
-    -- e nunca superficies amplas ou partes de quadras sem nome.
+    
+    
     local insideNearby=p.X>=b.minX-75 and p.X<=b.maxX+75
         and p.Z>=b.minZ-75 and p.Z<=b.maxZ+75
     if not insideNearby or math.max(s.X,s.Z)>30 then return false end
@@ -535,7 +535,7 @@ local function fpsEssential(inst)
         node=node.Parent
         depth=depth+1
     end
-    -- Bots de Practice sao preservados; NPCs de loja/evento no lobby nao.
+    
     return npc and not fpsLobbyDecor(inst)
 end
 
@@ -566,15 +566,15 @@ local function fpsProcess(inst)
 
     local class=inst.ClassName
     local isPart=inst:IsA('BasePart')
-    -- A quadra, e tambem texturas/meshes/guis descendentes dela,
-    -- nao podem ser mexidos pelo FPS Turbo.
+    
+    
     local hostPart=fpsWorldPart(inst)
     if hostPart and fpsProtectedArena(hostPart) then return end
     local inLobby=isPart and fpsInsideLobby(inst)
     local cullWorld=isPart and fpsCullWorldPart(inst)
     local essential=fpsEssential(inst)
     if essential then
-        -- Piso, spawns e gatilhos continuam com colisao, mas ficam invisiveis.
+        
         if isPart and cullWorld and inst.Anchored then
             local n=fpsName(inst.Name)
             if fpsFloorPart(inst) or fpsCriticalName(n) then fpsHide(inst) end
@@ -589,7 +589,7 @@ local function fpsProcess(inst)
     elseif isPart then
         local removeLobby=cullWorld or (not FPS.LobbyBounds and fpsLobbyDecor(inst))
         if removeLobby then
-            fpsHide(inst) -- invisivel, mas continua com colisao
+            fpsHide(inst) 
             if class=='MeshPart' then fpsChange(inst,'TextureID','') end
             fpsChange(inst,'MaterialVariant','')
             fpsChange(inst,'Material',Enum.Material.SmoothPlastic)
@@ -616,8 +616,8 @@ local function fpsScan(generation)
     local all=W:GetDescendants()
     fpsFindLobbyBounds(all)
     local began=os.clock()
-    -- A primeira passada retira logo as pecas do lobby. O resto
-    -- das texturas do mapa e processado depois, sem bloquear por muito tempo.
+    
+    
     for i,inst in ipairs(all) do
         if stopped or not FPS.Enabled or generation~=FPS.Generation then return end
         if inst:IsA('BasePart') and fpsInsideLobby(inst) then fpsProcess(inst) end
@@ -637,8 +637,8 @@ local function fpsScan(generation)
     table.clear(all)
 end
 fpsRestore=function()
-    -- Os objetos da v9.8 nunca sao desanexados. Restauracao de scripts
-    -- anteriores ainda tenta reconstruir a hierarquia do pai para o filho.
+    
+    
     local pending=FPS.Detached
     for _=1,10 do
         local progress=false
@@ -685,7 +685,7 @@ end
 links[#links+1]=W.DescendantAdded:Connect(function(inst)
     if FPS.Enabled then fpsProcess(inst) end
 end)
-end -- fps internals
+end 
 
 
 local function character()
@@ -723,9 +723,9 @@ local function radius(arena)
     if not b or not b:IsA('BasePart') then return 1.5 end
     return math.clamp(math.min(b.Size.X,b.Size.Y,b.Size.Z)*0.5,0.4,4)
 end
--- Raycast usado na PREVISAO: ignora o cenario ocultado pelo FPS Turbo,
--- que ainda possui colisao por seguranca. Sem isso um bloco invisivel
--- pode virar uma parede ou um "chao" falso no calculo da bola.
+
+
+
 local function predictionCast(origin,direction,p,castRadius)
     for _=1,9 do
         local ok,hit=pcall(function()
@@ -742,7 +742,7 @@ local function predictionCast(origin,direction,p,castRadius)
             return hit,true
         end
     end
-    -- Depois de nove objetos ocultos, nao adivinhar colisao.
+    
     return nil,false
 end
 
@@ -772,16 +772,16 @@ local function marker(arena,color)
     end
     part(Vector3.new(0.27,0.27,0.27),
         CFrame.new(0,0.08,0),0.08,Enum.PartType.Ball)
-    -- Somente o indicador no chao: sem BillboardGui nem texto.
+    
     model.WorldPivot=CFrame.new()
     return {Model=model,Parts=parts,Visible=false}
 end
 markers.Main=marker('Main',C.MainColor)
 markers.Practice=marker('Practice',C.PracticeColor)
--- Modo automatico: o proprio BallState informa Arena='Main' ou 'Practice',
--- enquanto Zones informa onde fica cada quadra. O jogador precisa estar
--- na regiao da quadra para que o indicador correspondente apareca.
--- Sem quadra proxima ou sem estado verificavel, mantemos modo Lobby.
+
+
+
+
 local currentMode='Lobby'
 local modeCheckAt=-math.huge
 local modeLastConfirmed=-math.huge
@@ -798,8 +798,8 @@ local function detectMode(force)
     local bestDist=math.huge
     local pos=root.Position
 
-    -- Primeiro: posicao em uma zona real enviada pelo servidor.
-    -- Isso continua funcionando durante o intervalo entre bolas.
+    
+    
     for _,arena in ipairs({'Main','Practice'}) do
         for _,zone in ipairs(zones[arena]) do
             if typeof(zone)=='Instance' and zone:IsA('BasePart') and zone.Parent then
@@ -808,7 +808,7 @@ local function detectMode(force)
                     local dx=math.max(0,math.abs(localPos.X)-zone.Size.X/2)
                     local dz=math.max(0,math.abs(localPos.Z)-zone.Size.Z/2)
                     local distance=math.sqrt(dx*dx+dz*dz)
-                    -- Leve tolerancia para a borda da quadra.
+                    
                     if distance<bestDist and distance<=12 then
                         chosen=arena
                         bestDist=distance
@@ -818,8 +818,8 @@ local function detectMode(force)
         end
     end
 
-    -- Se ainda nao recebemos Zones, reconhecer pela bola da arena,
-    -- somente enquanto o BallState daquela arena estiver ativo.
+    
+    
     if chosen=='Lobby' then
         for _,arena in ipairs({'Main','Practice'}) do
             local s=states[arena]
@@ -837,7 +837,7 @@ local function detectMode(force)
         end
     end
 
-    -- Evita piscar 'Lobby' por um frame ao saltar ou cruzar a borda.
+    
     if chosen~='Lobby' then
         modeLastConfirmed=now
     elseif currentMode~='Lobby' and now-modeLastConfirmed<0.35 then
@@ -846,9 +846,9 @@ local function detectMode(force)
     currentMode=chosen
     return currentMode
 end
--- FPS usa exatamente a mesma deteccao de area dos indicadores.
+
 FPS.GetMode=detectMode
--- Impede que a limpeza por proximidade esconda quadras de Main/Practice.
+
 FPS.IsArenaPoint=function(pos)
     for _,arena in ipairs({'Main','Practice'}) do
         for _,zone in ipairs(zones[arena]) do
@@ -879,9 +879,9 @@ local function active(arena)
     if not s or W:GetServerTimeNow()>s.EndTime+0.08 then return nil end
     return s
 end
--- Estados de habilidade podem continuar em movimento depois da fronteira
--- calculada para o trecho balistico original. O limite extra so vale
--- para estados marcados como habilidade; nao muda o dive nem a bola normal.
+
+
+
 local function liveState(arena)
     local s=active(arena)
     if s then return s end
@@ -898,17 +898,17 @@ local function updateMarkers()
     local mode=detectMode()
     for arena,m in pairs(markers) do
         local s=(arena==mode) and correctedState and correctedState(arena) or nil
-        -- A parede e o teto NUNCA recebem indicador, mesmo na falta
-        -- de uma previsao confiavel de onde a bola caira depois.
+        
+        
         if s and s.Point and s.Normal and s.Surface=='floor'
             and s.Normal.Y>=0.88 then
             m.Model:PivotTo(frame(s.Point,s.Normal))
-            -- Foto do indicador presente na hora do E: dive nao muda.
+            
             m.LastPoint=s.Point
             m.LastNormal=s.Normal
             m.LastVisibleAt=os.clock()
             show(m,true)
-            -- Trajetoria apos ricochete: previsao ilustrativa, nao certeza.
+            
             local alpha=s.Live and 0.5 or (s.BounceEstimated and 0.36 or 0)
             if m.LastAlpha~=alpha then
                 m.LastAlpha=alpha
@@ -919,8 +919,8 @@ local function updateMarkers()
         else
             show(m,false)
             m.LastAlpha=nil
-            -- Quando ha estado de bola ativo mas a previsao foi rejeitada,
-            -- nao deixar o E usar o ponto antigo nos 0.12s de tolerancia.
+            
+            
             if arena==mode and liveState(arena) then
                 m.LastPoint=nil
                 m.LastNormal=nil
@@ -942,11 +942,11 @@ local function forecast(s,arena)
     local endpoint=position(s,duration)
     local endVelocity=s.Velocity+s.Gravity*duration
     local ballRadius=radius(arena)
-    -- BallState.Normal is the NEXT collision's surface normal (confirmed
-    -- against the provided inspector logs). Prefer the server's collision
-    -- plane over client casts. EndTime describes ball CENTER at impact.
-    -- Move to the contact point only for rendering/collision prediction.
-    -- Special movement states still fall back to live tracking below.
+    
+    
+    
+    
+    
     local serverNormal=s.Normal
     if typeof(serverNormal)=='Vector3' and serverNormal.Magnitude>0.9
         and serverNormal.Magnitude<1.1
@@ -962,8 +962,8 @@ local function forecast(s,arena)
     end
     local p=params()
 
-    -- BallState.EndTime is the game's forecast boundary. A cast that hits
-    -- some unrelated part far BEFORE this time is not proof of a wall bounce.
+    
+    
     local segments=math.clamp(math.ceil(duration/0.08),2,110)
     local castRadius=math.max(0.35,ballRadius*0.89)
     local nearEnd=math.clamp(duration*0.10,0.075,0.16)
@@ -990,14 +990,14 @@ local function forecast(s,arena)
                             s.Time+hitT,true,kind
                     end
                 end
-                -- The cast cannot be used as a trajectory oracle; do not
-                -- label this early decorative collision as a real wall.
+                
+                
             end
         end
     end
 
-    -- The endpoint is a hypothesis, not confirmed contact. Confirm that an
-    -- actual collidable surface is at roughly a ball radius from the end.
+    
+    
     local best,err=nil,math.huge
     local directions={Vector3.xAxis,-Vector3.xAxis,Vector3.yAxis,
         -Vector3.yAxis,Vector3.zAxis,-Vector3.zAxis}
@@ -1016,8 +1016,8 @@ local function forecast(s,arena)
     if best then
         local kind=best.Normal.Y>=0.88 and 'floor'
             or (best.Normal.Y<=-0.72 and 'ceiling' or 'wall')
-        -- A stray vertical barrier from a thin decoration must be backed
-        -- by a strongly plausible endpoint before we show it as a wall.
+        
+        
         if kind=='wall' and (err>0.25 or s.IgnoreWalls) then return nil end
         return best.Position,best.Normal,err,endVelocity,
             s.EndTime,true,kind
@@ -1025,11 +1025,11 @@ local function forecast(s,arena)
     return nil
 end
 
--- O servidor multiplica a velocidade por 0.6 apos qualquer colisao normal:
--- v_apos = 0.6 * (v_antes - 2 * (v_antes . normal) * normal).
--- Confirmado por 13 pares consecutivos de BallState Bounced (Main/Practice).
--- Nao recalibrar usando estimativas visuais: isso alterava um fator exato.
--- Para poderes/forcas especiais (Tornado/Magnet) usamos rastreamento visual.
+
+
+
+
+
 local bounceModels={Main={Normal=0.60,Tangent=0.60},
     Practice={Normal=0.60,Tangent=0.60}}
 
@@ -1052,7 +1052,7 @@ local function predictFloorAfterBounce(raw,arena,hitPoint,hitNormal,hitVelocity,
     local param=params()
     local total=0
     local bounceCount=1
-    -- Limites impedem travamento em salas fechadas e casts muito caros.
+    
     for _=1,115 do
         if total>4 or bounceCount>5 or velocity.Magnitude>320 then break end
         local dt=0.04
@@ -1069,13 +1069,13 @@ local function predictFloorAfterBounce(raw,arena,hitPoint,hitNormal,hitVelocity,
                 local elapsed=dt*f
                 local incident=velocity+raw.Gravity*elapsed
                 local n=hit.Normal
-                -- Colisao do topo da quadra: superficie horizontal.
+                
                 if n.Y>=0.88 and incident.Y< -1.2 then
                     return hit.Position,n,startTime+total+elapsed,bounceCount
                 end
                 local reflected=bounceVelocity(incident,n,model)
                 if not reflected then
-                    -- Colisao rasante: nao inventar destino de pouso.
+                    
                     return nil
                 end
                 bounceCount=bounceCount+1
@@ -1091,7 +1091,7 @@ local function predictFloorAfterBounce(raw,arena,hitPoint,hitNormal,hitVelocity,
     end
     return nil
 end
--- Trava de area: nunca aprende automaticamente a area adversaria.
+
 local function zoneAt(list,point)
     local chosen,smallest=nil,math.huge
     for _,z in ipairs(list) do
@@ -1120,8 +1120,8 @@ end
 local function ownSide(s,root)
     local impact=zoneAt(s.Zones,s.Point)
     local mine=zoneAt(s.Zones,root.Position)
-    -- Respeitar a zona travada. Estar fisicamente do outro lado da
-    -- quadra nao deve redefinir a area amiga durante a jogada.
+    
+    
     if next(owned[s.Arena])~=nil then
         return impact~=nil and owned[s.Arena][impact]==true
     end
@@ -1155,8 +1155,8 @@ links[#links+1]=event.OnClientEvent:Connect(function(raw)
     local oldState=states[arena]
     if oldState and raw.Time<oldState.Time then return end
     local point,normal,error,velocity,collisionTime,reliable,surface=forecast(raw,arena)
-    -- Guardar a primeira colisao para aprender o rebote do servidor
-    -- quando o proximo BallState chegar.
+    
+    
     local firstPoint,firstNormal,firstVelocity,firstSurface=point,normal,velocity,surface
     local estimated,bounces=false,0
     if (surface=='wall' or surface=='ceiling') and point and normal and velocity then
@@ -1171,7 +1171,7 @@ links[#links+1]=event.OnClientEvent:Connect(function(raw)
             estimated=true
             bounces=count
         else
-            -- Nada de falso marcador na parede.
+            
             point,normal,collisionTime,reliable,surface=nil,nil,nil,false,nil
         end
     elseif surface~='floor' then
@@ -1194,8 +1194,8 @@ links[#links+1]=event.OnClientEvent:Connect(function(raw)
             if not set[z] then changedZones=true break end
         end
     end
-    -- Se a simulacao cair bem fora das zonas jogaveis, nao arrastar
-    -- o circulo para uma quadra aleatoria. E preferivel omitir o erro.
+    
+    
     if point and surface=='floor' and #zoneList>0 then
         local inCourt=false
         for _,zone in ipairs(zoneList) do
@@ -1214,12 +1214,12 @@ links[#links+1]=event.OnClientEvent:Connect(function(raw)
     zones[arena]=zoneList
     if changedZones then FPS.Revision=FPS.Revision+1 end
     detectMode(true)
-    -- Uma unica tentativa inicial por arena; area amiga identificada automaticamente.
+    
     if C.SmartDive and not areaAttempt[arena] and #zoneList>0 then
         if lockZone(arena,true) then areaAttempt[arena]=true end
     end
-    -- Um impacto real no piso ensina a altura da quadra para poderes
-    -- cuja bola nao segue a trajetoria parabolica do BallState.
+    
+    
     if surface=='floor' and point and not estimated and normal and normal.Y>=0.88 then
         liveTracks[arena].FloorY=point.Y
     end
@@ -1238,9 +1238,9 @@ links[#links+1]=event.OnClientEvent:Connect(function(raw)
 end)
 
 
--- Sample the visible ball itself. Curve/Tornado can deviate from the
--- ballistic state received from the server. When the path is changing,
--- stop claiming the old landing point is reliable.
+
+
+
 local function updateBallMotion()
     local now=os.clock()
     for arena,track in pairs(liveTracks) do
@@ -1270,9 +1270,9 @@ local function updateBallMotion()
                 if #samples>=4 then
                     local first,last=samples[1],samples[#samples]
                     local dt=last.T-first.T
-                    -- A partir do fim do trecho que bate na parede, a
-                    -- parabola original NAO deve mais representar a bola.
-                    -- Aguardar o BallState seguinte sem apagar a previsao.
+                    
+                    
+                    
                     local pastKnownBounce=s.BounceEstimated and
                         W:GetServerTimeNow()>=s.RawEndTime-0.03
                     if dt>=0.095 and not pastKnownBounce then
@@ -1281,8 +1281,8 @@ local function updateBallMotion()
                         local t1=math.clamp(W:GetServerTimeNow()-raw.Time,0,12)
                         local expected=position(raw,t1)-position(raw,t0)
                         local observed=last.P-first.P
-                        -- Difference between ACTUAL displacement and
-                        -- ballistic displacement; cancels visual offsets.
+                        
+                        
                         local error=(observed-expected).Magnitude
                         local speed=observed.Magnitude/dt
                         local unstable=error>math.max(2.5,dt*13)
@@ -1305,17 +1305,17 @@ local function updateBallMotion()
     end
 end
 
--- Tornado/Curve/Magnet: o estado de rede pode ter velocidade zero ou
--- trajetoria alterada pela habilidade. A previsao normal nao serve.
--- Usar amostras recentes da bola visivel e projetar ate o solo, sem limitar
--- a 0.39 s. E uma ESTIMATIVA que se atualiza conforme a curva muda.
+
+
+
+
 local function liveFloor(arena)
     local track=liveTracks[arena]
     local s=liveState(arena)
     if not track or not s or not s.Raw then return nil end
     local now=os.clock()
-    -- Nao refazer raycasts em todos os Heartbeats; manter a ultima
-    -- marcacao viva entre as leituras de movimento.
+    
+    
     if track.LastLiveCalc and track.LastLiveRawTime==s.Raw.Time
         and now-track.LastLiveCalc<0.085 then
         if track.LastLivePoint then
@@ -1337,8 +1337,8 @@ local function liveFloor(arena)
         return hit and hit.Normal.Y>=0.86
             and not (hit.Instance and FPS.HiddenOriginals[hit.Instance]~=nil)
     end
-    -- Buscar o piso da arena, e NAO exigir que ele fique logo abaixo
-    -- da bola: durante o tornado ela pode estar sobre mar/parede.
+    
+    
     local root=character()
     if root and (not track.FloorCheckedAt or now-track.FloorCheckedAt>0.55) then
         track.FloorCheckedAt=now
@@ -1358,17 +1358,17 @@ local function liveFloor(arena)
         end
     end
     if not floorY then
-        -- Fallback: altura do jogador em quadra. Nao confundir a
-        -- altura da bola (que oscila no tornado) com a do piso.
+        
+        
         if root and detectMode() == arena then
             floorY=root.Position.Y-3
         end
     end
     if floorY then track.FloorY=floorY end
 
-    -- A velocidade real e estimada a partir das ultimas amostras. O
-    -- BallState do tornado pode informar Velocity=(0,0,0) mesmo
-    -- enquanto a bola se move em uma curva no cliente.
+    
+    
+    
     local v=Vector3.zero
     local acc=Vector3.zero
     local measured=false
@@ -1407,14 +1407,14 @@ local function liveFloor(arena)
         if typeof(raw.Velocity)=='Vector3' and raw.Velocity.Magnitude>1 then
             v=raw.Velocity
         else
-            -- Ainda sem velocidade confiavel: exibir o alvo do poder,
-            -- se ele for espacial; senao usar a projeção vertical.
+            
+            
             v=Vector3.zero
         end
     end
 
-    -- Sem amostras suficientes, a projecao de Tornado/Magnet a partir
-    -- de Velocity=0 pode estar completamente errada. Nao inventar ponto.
+    
+    
     if not measured and #q<3 and typeof(raw.Target)~='Vector3' then
         return nil
     end
@@ -1438,8 +1438,8 @@ local function liveFloor(arena)
             t=math.clamp(remaining,0.15,4.0)
         end
     end
-    -- Manter o comportamento conservador enquanto a habilidade curva;
-    -- o marcador atualiza a cada ~85ms, sem tentar adivinhar giros longos.
+    
+    
     local effectTime=math.min(t,0.65)
     local shift=Vector3.new(v.X*t+acc.X*0.5*effectTime*effectTime,
         0,v.Z*t+acc.Z*0.5*effectTime*effectTime)
@@ -1451,8 +1451,8 @@ local function liveFloor(arena)
         end
     end
 
-    -- A bola pode cruzar paredes, mas o ponto final de pouso deve
-    -- permanecer numa zona de quadra conhecida, nao no mar.
+    
+    
     local chosen,minimum=nil,math.huge
     for _,z in ipairs(zones[arena]) do
         if typeof(z)=='Instance' and z:IsA('BasePart') and z.Parent then
@@ -1467,8 +1467,8 @@ local function liveFloor(arena)
         end
     end
     if chosen and minimum>0 then
-        -- v9.7 projetava pontos distantes para a borda da quadra;
-        -- um circulo plausivel na tela podia estar dezenas de studs errado.
+        
+        
         if math.sqrt(minimum)>10 then return nil end
         guessed=Vector3.new(chosen.X,guessed.Y,chosen.Z)
     end
@@ -1482,16 +1482,16 @@ local function liveFloor(arena)
         floorY=landing.Position.Y
         track.FloorY=floorY
     elseif floorY and chosen and minimum<=9 then
-        -- Fallback somente bem dentro da zona real (ate 3 studs da
-        -- area): nao marcar mar, blocos ocultos ou solo inventado.
+        
+        
         finalPos=Vector3.new(guessed.X,floorY,guessed.Z)
         finalNormal=Vector3.yAxis
     else
-        -- Sem altura de solo conhecida: guardar as amostras e esperar
-        -- encontrar uma quadra, ao inves de marcar uma parede.
+        
+        
         return nil
     end
-    -- Evitar que uma previsao antiga sobreviva ao fim da jogada.
+    
     track.LastLivePoint=finalPos
     track.LastLiveNormal=finalNormal
     track.LastLiveDelay=t
@@ -1517,7 +1517,7 @@ correctedState=function(arena)
                 Zones=s.Zones,Error=2,ImpactSpeed=s.ImpactSpeed,
                 FallSpeed=1,Reliable=false,Live=true}
         end
-        -- So manter um ponto do MESMO BallState por poucos frames.
+        
         if track.LastGroundPoint and track.LastGroundRawTime==s.Raw.Time
             and now-(track.LastGroundAt or -math.huge)<0.16 then
             return {Arena=arena,Time=s.Time,EndTime=W:GetServerTimeNow()+0.08,
@@ -1527,14 +1527,14 @@ correctedState=function(arena)
         end
         return nil
     end
-    -- Mudanca real nao explicada pelo BallState: o rastreamento visual
-    -- nao consegue reconstruir a nova colisao com seguranca. Ocultar.
+    
+    
     if s.MotionUncertain or (track.UncertainUntil and
         now<track.UncertainUntil and track.UncertainRawTime==s.Raw.Time) then
         return nil
     end
-    -- Nao insistir numa previsao calculada ANTES do rebote quando
-    -- o servidor ja deveria ter enviado o proximo trecho.
+    
+    
     if s.BounceEstimated and type(s.RawEndTime)=='number'
         and W:GetServerTimeNow()>s.RawEndTime+0.07 then
         return nil
@@ -1542,9 +1542,9 @@ correctedState=function(arena)
     return s
 end
 
--- v8.0: ShiftLock e exclusivo do Roblox. O inspector confirmou
--- que o dive segue o avatar com mouse LockCurrentPosition e LockCenter.
--- O script apenas LE esse estado; nunca tenta alterna-lo.
+
+
+
 local function shiftLockAtivo()
     return U.MouseBehavior==Enum.MouseBehavior.LockCenter
 end
@@ -1563,7 +1563,7 @@ local function keepRotation(hum)
     hum.AutoRotate=false
 end
 local function restoreCamera()
-    -- Mantido para os callbacks existentes. Camera nunca e alterada.
+    
     restoreRotation()
 end
 local function face(root,hum,target)
@@ -1588,13 +1588,13 @@ local function targetLock(root)
     end
     return best
 end
--- =====================================
--- CORTE DIRECIONAL: segure a tecla configurada durante um pulo.
--- Enquanto estiver no ar, a orientacao do avatar segue a CAMERA.
--- Ao clicar para cortar, trava o vetor horizontal ANTES do clique
--- e o mantem por alguns frames para a animacao registrar a direcao.
--- Nao modifica Camera.CFrame ou pacotes enviados ao servidor.
--- =====================================
+
+
+
+
+
+
+
 local spikeHeld=false
 local spikeJumped=false
 local spikeJumpHum=nil
@@ -1667,7 +1667,7 @@ local function onSpikeClick()
     if not dir then return end
     spikeLastClick=now
     spikeLockedDir=dir
-    -- Apenas a janela curta em que a animacao determina o lado do corte.
+    
     spikeLockedUntil=now+0.40
     local root,hum=character()
     if root and hum then orientSpike(root,hum,dir) end
@@ -1683,15 +1683,15 @@ local function updateSpikeFacing(root,hum)
         return false
     end
     if spikeLockedDir then clearSpikeLock() end
-    -- Antes do clique, apontar o corpo continuamente para a camera;
-    -- o clique captura essa direcao e nao a deixa variar depois.
+    
+    
     if spikeHeld and spikeAvailable() then
         return orientSpike(root,hum,directionFromCamera())
     end
     return false
 end
 
--- Observacao da tecla: o proprio E continua reservado para Dive.
+
 links[#links+1]=U.InputBegan:Connect(function(input,processed)
     if stopped then return end
     if spikeCaptureKey and input.UserInputType==Enum.UserInputType.Keyboard then
@@ -1716,7 +1716,7 @@ links[#links+1]=U.InputBegan:Connect(function(input,processed)
         and input.KeyCode.Name==C.SpikeKey then
         spikeHeld=true
     elseif input.UserInputType==Enum.UserInputType.MouseButton1 and not processed then
-        -- Fallback para jogos que usam UserInputService, sem engolir o clique.
+        
         onSpikeClick()
     end
 end)
@@ -1726,8 +1726,8 @@ links[#links+1]=U.InputEnded:Connect(function(input)
         spikeHeld=false
     end
 end)
--- CAS em prioridade alta para registrar a direcao antes da acao nativa,
--- sem consumir MouseButton1 ou interferir em ataques normais.
+
+
 local spikeBindOK=pcall(function()
     CAS:BindActionAtPriority(spikeActionKey,function(_,state)
         if state==Enum.UserInputState.Begin then onSpikeClick() end
@@ -1738,8 +1738,8 @@ if not spikeBindOK then
     warn('[VolleyBomb] Captura do corte por CAS indisponivel; usando InputBegan')
 end
 
--- CAS observa E na prioridade 10000, mira antes da acao Dive (2000)
--- e deixa o E original continuar sem nenhum bloqueio.
+
+
 
 local function samplePing()
     if os.clock()-lastPing<1 then return end
@@ -1762,18 +1762,18 @@ end
 local function diveSpeed()
     return math.clamp(measuredSpeed or C.DiveSpeed,15,100)
 end
--- =====================================
--- DIVE INTELIGENTE V7.7: UM E, UM ALVO CONGELADO
--- Nenhuma espera pela bola, distancia ou angulo da camera.
--- Nao muda ShiftLock/MouseBehavior nem Camera.CFrame.
--- Nao manda E artificial. O jogo recebe o E original.
--- Apos detectar o impulso nativo, acompanha a linha reta ate o ponto capturado.
--- =====================================
 
--- Usa a posicao REAL DO INDICADOR que ja estava desenhado quando E
--- foi pressionado. Nao consulta BallState nem refaz a previsao.
--- 0.12s de tolerancia cobre o caso em que o indicador acabou de sumir
--- porque a bola atingiu o solo entre dois frames.
+
+
+
+
+
+
+
+
+
+
+
 local function smartCandidate()
     local root=character()
     if not root then return nil end
@@ -1805,8 +1805,8 @@ local function stopSteering()
     steerAnimationSeen=false
 end
 
--- Comeca em estado de espera pelo impulso nativo, nao pela bola.
--- Esta espera e apenas pelo movimento do dive REAL disparado pelo E.
+
+
 local function aimAndDiveNatively()
     if stopped or not C.SmartDive then return end
     local now=os.clock()
@@ -1819,7 +1819,7 @@ local function aimAndDiveNatively()
     aimTarget=nil
     aimUntil=0
 
-    -- Sem um indicador existente no instante do clique, E e nativo.
+    
     if not target then
         lastDecision='E original: nenhum indicador naquele instante'
         return
@@ -1830,7 +1830,7 @@ local function aimAndDiveNatively()
         return
     end
 
-    -- Snapshot imutavel; novos BallState/indicadores NAO mudam o destino.
+    
     steerTarget=Vector3.new(target.X,target.Y,target.Z)
     steerDirection=direction
     steerStartPosition=root.Position
@@ -1846,11 +1846,11 @@ local function aimAndDiveNatively()
         arena,dist,target.X,target.Y,target.Z,tostring(shiftLockAtivo())))
 end
 
--- v8.0: retorna o controle de velocidade/frenagem da v7.7, MAS
--- nao muda a trajetoria depois do E. A direcao e uma linha reta
--- fixa do ponto inicial ate o indicador naquele instante.
--- NAO consulta bola/indicador novamente, nao gira camera ou avatar.
--- O E original inicia o movimento antes da primeira correcao fisica.
+
+
+
+
+
 local wallCast=params()
 local wallCastChar=me.Character
 local lastWallFilter=0
@@ -1860,8 +1860,8 @@ local function obstacleAhead(root,dir)
         wallCast=params()
         lastWallFilter=os.clock()
     end
-    -- Para antes de uma parede fisica; jamais tenta desviar por outro lado.
-    -- O raio e horizontal e parte da altura do personagem.
+    
+    
     local ok,hit=pcall(function()
         return W:Raycast(root.Position+Vector3.new(0,0.75,0),dir*3.2,wallCast)
     end)
@@ -1877,8 +1877,8 @@ local function steerPhysics()
     end
     local now=os.clock()
     if now>steerUntil then
-        -- Sem inventar um impulso novo quando a janela termina.
-        -- Solta o movimento; o jogo reassume a simulacao.
+        
+        
         lastDecision=steerStarted and 'Dive finalizado: limite de tempo' or 'E sem dive detectado'
         stopSteering()
         return
@@ -1886,7 +1886,7 @@ local function steerPhysics()
     local velocity=root.AssemblyLinearVelocity
     local flat=Vector3.new(velocity.X,0,velocity.Z).Magnitude
 
-    -- Nao empurrar avatar se o E original estiver em cooldown.
+    
     if not steerStarted then
         if now-steerArmedAt>0.34 then
             lastDecision='E original nao iniciou dive (possivel cooldown)'
@@ -1904,8 +1904,8 @@ local function steerPhysics()
         end
     end
 
-    -- Progresso sobre A LINHA ORIGINAL, e nao distancia atual ate o
-    -- indicador. Esse calculo impede curvas, retorno ou busca lateral.
+    
+    
     local offset=root.Position-steerStartPosition
     local delta=Vector3.new(offset.X,0,offset.Z)
     local progress=delta:Dot(steerDirection)
@@ -1918,8 +1918,8 @@ local function steerPhysics()
         return
     end
 
-    -- Caso haja desvio por impacto/teleporte, NAO correr atras do alvo.
-    -- Desliga a assistencia para nao mudar a rota original.
+    
+    
     local sideways=(delta-steerDirection*progress).Magnitude
     if sideways>7 then
         lastDecision='Trajetoria desviada: sem perseguir indicador'
@@ -1933,16 +1933,16 @@ local function steerPhysics()
         return
     end
 
-    -- MESMA curva de velocidade e frenagem da v7.7, so que projetada
-    -- sempre na DIRECAO INICIAL. O personagem pode desacelerar/parar,
-    -- mas o script nunca faz curva para corrigir a trajetoria.
+    
+    
+    
     local speed=math.clamp((left-1.2)*13,26,118)
     local corrected=steerDirection*speed
     root.AssemblyLinearVelocity=Vector3.new(corrected.X,velocity.Y,corrected.Z)
 end
 
--- PostSimulation acontece depois da fisica padrao, reduzindo disputa
--- com o impulso do jogo. Heartbeat e apenas um fallback.
+
+
 local physicsOK,physicsConn=pcall(function()
     return Run.PostSimulation:Connect(steerPhysics)
 end)
@@ -1952,16 +1952,16 @@ else
     links[#links+1]=Run.Heartbeat:Connect(steerPhysics)
 end
 
--- Fallback caso o ContextActionService nao aceite o bind.
--- InputBegan nao bloqueia o E do jogo em nenhuma circunstancia.
+
+
 links[#links+1]=U.InputBegan:Connect(function(input)
     if stopped or input.KeyCode~=Enum.KeyCode.E or not C.SmartDive
         or inputBound or U:GetFocusedTextBox()~=nil then return end
     aimAndDiveNatively()
 end)
 
--- Uma parede NAO e um ponto de queda. Aguardar o proximo BallState
--- somente quando o rebote estiver proximo e for possivel reproduzir E.
+
+
 local function wallCandidate()
     local mode=detectMode()
     local root,hum=character()
@@ -1986,8 +1986,8 @@ local function wallCandidate()
     return result
 end
 
--- Perfil medido depois de E; uma animacao so e insuficiente
--- para concluir que a defesa pegou a bola.
+
+
 local function startProfile()
     local root=character()
     if not root then return end
@@ -2020,8 +2020,8 @@ end
 
 local function travelSeconds(dist)
     local travel=math.max(0,dist-2.2)
-    -- Deslocamento real observado apos a animacao. Nao extrapolar o
-    -- perfil apos o ultimo ponto e nao assumir que todo dive e igual.
+    
+    
     local previous=0
     for bin=1,11 do
         local d=learnedDiveProfile[bin]
@@ -2036,10 +2036,10 @@ local function travelSeconds(dist)
             previous=math.max(previous,d)
         end
     end
-    -- Perfil inicial observado pelo Inspector em 5 dives normais:
-    -- ~5 studs em 0.04s, ~12 em 0.10s, ~20 em 0.20s.
-    -- Depois a velocidade diminui bastante. Usa curva por trechos,
-    -- em vez da antiga media de caminhada de 36 studs/s.
+    
+    
+    
+    
     if travel <= 5 then
         return math.max(0.025, 0.04 * travel/5)
     elseif travel <= 12 then
@@ -2050,19 +2050,19 @@ local function travelSeconds(dist)
     return math.clamp(0.205+(travel-20)*0.055,0.205,0.48)
 end
 
--- Estimativa da antecedencia ideal do comando, em segundos.
+
 local function diveLeadFor(s,dist)
     local network=math.clamp(ping,0,0.16)
-    -- Bolas mais rapidas exigem uma margem extra de atualizacao do alvo.
+    
     local speedBonus=math.clamp((s.ImpactSpeed-38)*0.0013,0,0.065)
-    -- Margem de antecipacao interna preservada (sem controle visual).
+    
     local manual=math.clamp((C.DiveLead-0.15)*0.055,0,0.075)
     return math.clamp(travelSeconds(dist)+network
         +C.InputDelay+C.SafetyLead+speedBonus+manual,0.13,0.78)
 end
 
--- Quando uma bola esta muito perto do solo, nao vale esperar
--- mais frames tentando otimizar um dive: o E sai imediatamente.
+
+
 local function shouldLaunchNow(s,remaining,lead)
     local speedPad=math.clamp((s.ImpactSpeed-48)*0.0011,0,0.055)
     return remaining<=lead+C.EmergencyWindow+speedPad
@@ -2073,8 +2073,8 @@ local function observedDive()
     lastNativeStart=os.clock()
     lastDive=os.clock()
     if steerActive and os.clock()-steerArmedAt<=0.34 then
-        -- Animacao confirma que o E foi aceito; so movimenta apos
-        -- a velocidade real do dive aparecer para evitar arranque falso.
+        
+        
         steerAnimationSeen=true
     end
     if pending then
@@ -2082,7 +2082,7 @@ local function observedDive()
         pending=nil
     end
     startProfile()
-    -- Assim que a animacao confirma o dive, nao mirar novamente.
+    
     aimTarget=nil
     aimUntil=0
     restoreRotation()
@@ -2111,7 +2111,7 @@ end
 attachAnimator()
 links[#links+1]=me.CharacterAdded:Connect(attachAnimator)
 
--- Nao agendar, reexecutar nem consumir o E. Comando nativo livre.
+
 local function cancelSmart()
     pending=nil
     aimTarget=nil
@@ -2119,7 +2119,7 @@ local function cancelSmart()
     stopSteering()
 end
 
--- Explicacao por E nao elegivel: evitar diagnosticos cegos.
+
 local function explainNoCandidate()
     local root=character()
     for arena in pairs(markers) do
@@ -2146,7 +2146,7 @@ local function onSmartDive(_,inputState)
     if inputState==Enum.UserInputState.Begin and not U:GetFocusedTextBox() then
         aimAndDiveNatively()
     end
-    -- NUNCA Sink: este proprio E deve chegar na acao Dive nativa.
+    
     return Enum.ContextActionResult.Pass
 end
 
@@ -2172,7 +2172,7 @@ local function updateEIntercept()
     end
 end
 
--- Sem espera por queda: o proprio E original inicia o dive imediatamente.
+
 
 links[#links+1]=Run.Heartbeat:Connect(function()
     if stopped then return end
@@ -2189,15 +2189,15 @@ Run:BindToRenderStep(renderKey,Enum.RenderPriority.Camera.Value+10,function()
     local root,hum=character()
     if not root then restoreCamera() return end
 
-    -- Durante o dive, o corte nao pode disputar a direcao.
+    
     if steerActive then
         restoreRotation()
         return
     end
-    -- O corte pode travar o lado durante um pulo sem tocar na camera.
+    
     if updateSpikeFacing(root,hum) then return end
 
-    -- Lock-on do menu continua funcionando em separado quando ativado.
+    
     if C.LockOn and not C.SmartDive then
         local point=targetLock(root)
         if point and not shiftLockAtivo() then face(root,hum,point)
@@ -2207,12 +2207,12 @@ Run:BindToRenderStep(renderKey,Enum.RenderPriority.Camera.Value+10,function()
     end
 end)
 
--- Sem PreSimulation/PostSimulation modificando AssemblyLinearVelocity.
--- A direcao do E e lida pela rotina nativa do jogo.
 
--- =====================================
--- INTERFACE: ICONE AVATAR E PAINEL
--- =====================================
+
+
+
+
+
 local holder=me:WaitForChild('PlayerGui')
 if type(gethui)=='function' then
     local ok,p=pcall(gethui)
@@ -2324,8 +2324,8 @@ local function toggle(label,y,key,color,where)
         if key=='SmartDive' then
             if not C.SmartDive then cancelSmart(false) end
             if C.SmartDive then
-                -- O alvo agora e qualquer marcador visivel.
-                -- Nao tentar travar a area para decidir se E funciona.
+                
+                
                 stopSteering()
             else
                 aimTarget=nil
@@ -2343,15 +2343,15 @@ local function toggle(label,y,key,color,where)
     refresh()
     return refresh
 end
--- Apenas opcoes que precisam ser ligadas manualmente.
--- Lobby/Practice/Partida e os indicadores mudam automaticamente.
+
+
 toggle('Lock-on (avatar)',0,'LockOn',Color3.fromRGB(190,160,255))
 refreshSmart=toggle('Dive Inteligente',47,'SmartDive',Color3.fromRGB(255,190,90))
 toggle('FPS Turbo',94,'FPSBoost',Color3.fromRGB(95,220,183))
--- Painel simplificado: os calculos de dive, tempo e protecao de area
--- continuam ativos internamente. O ajuste manual de antecedencia,
--- o botao de area e o estado textual do dive nao aparecem na interface.
--- A identificacao da zona amiga permanece automatica.
+
+
+
+
 local stats=make('TextLabel',{Text='',Font=Enum.Font.Gotham,TextSize=10,
     TextColor3=Color3.fromRGB(160,169,181),BackgroundTransparency=1,
     TextXAlignment=Enum.TextXAlignment.Left,
@@ -2374,10 +2374,10 @@ links[#links+1]=Run.Heartbeat:Connect(function()
         or Color3.fromRGB(130,135,145)
 end)
 
--- =====================================
--- AJUSTES: DIRECAO ASSISTIDA E SALVAMENTO
--- =====================================
--- Direcao assistida esta integrada ao Dive Inteligente; sem ajuste redundante.
+
+
+
+
 toggle('Corte direcional',4,'SpikeDirection',Color3.fromRGB(255,170,105),extras)
 local keyLabel=make('TextLabel',{
     Text='TECLA DO CORTE',Font=Enum.Font.GothamMedium,TextSize=10,
@@ -2411,7 +2411,7 @@ make('TextLabel',{
     Size=UDim2.new(1,-6,0,51)
 },extras)
 
--- Preferencias persistentes
+
 local saveStatus=make('TextLabel',{
     Text='',Font=Enum.Font.Gotham,TextSize=11,
     TextColor3=Color3.fromRGB(165,175,186),
@@ -2437,7 +2437,7 @@ saveSettings()
 refreshSaveStatus()
 fpsSetEnabled(C.FPSBoost)
 
--- Arrastar sem teleportar: so altera a posicao se realmente mover.
+
 local dragging=nil
 local opened=false
 local placed=false
@@ -2533,8 +2533,8 @@ end)
 
 local function stop(reason)
     if stopped then return end
-    -- O X encerra o script *e* cancela a fila de teleportes. Ao substituir a
-    -- versao, o encerramento interno NAO deve cancelar o novo auto-inicio.
+    
+    
     if reason~='replace' then
         local active=env.VolleyBombLanding
         if type(active)=='table' and active.Stop==stop
@@ -2542,7 +2542,7 @@ local function stop(reason)
             pcall(active.CancelTeleport)
         end
     end
-    -- Salvar ANTES de desativar as funcionalidades no encerramento.
+    
     saveSettings()
     stopped=true
     pending,aimTarget=nil,nil
@@ -2574,7 +2574,7 @@ env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.8'}
 print('[VolleyBomb v9.8] Rebote 0.60 e normal do BallState; Dive v8.0 preservado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
 ]=]
 
-local RUNNER = [==[-- Executado no servidor atual e nos seguintes, sempre dentro do VolleyBomb.
+local RUNNER = [==[
 return function(expectedUniverse, core, runner)
     if not game:IsLoaded() then game.Loaded:Wait() end
     local universe = game.GameId
@@ -2641,8 +2641,8 @@ return function(expectedUniverse, core, runner)
         return false,tostring(err)
     end
 
-    -- Primeiro inicia o script atual. Se a versao anterior estiver aberta,
-    -- ela sai com motivo 'replace' e nao cancela esta proxima fila.
+    
+    
     local compiled,err=loadstring(core)
     if not compiled then
         warn('[VolleyBomb v9.8] Erro ao ler codigo principal: '..tostring(err))
@@ -2657,8 +2657,8 @@ return function(expectedUniverse, core, runner)
     local current=environ.VolleyBombLanding
     if type(current)~='table' or current.Version~='9.7' then return end
 
-    -- Funcao usada ao clicar X. O Solara remove TODA a fila de teleportes,
-    -- inclusive scripts antigos. Nao existe cancelamento por item individual.
+    
+    
     current.CancelTeleport=function()
         local success,message=clearQueuedTeleports()
         if success then
@@ -2669,8 +2669,8 @@ return function(expectedUniverse, core, runner)
         return success
     end
 
-    -- Antes de registrar o unico carregamento atualizado, apaga as copias de
-    -- versoes antigas que possam ter ficado pendentes no executor.
+    
+    
     local cleared,why=clearQueuedTeleports()
     if not cleared then
         warn('[VolleyBomb v9.8] Nao deu para limpar copias antigas: '..tostring(why))
