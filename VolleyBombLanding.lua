@@ -174,7 +174,7 @@ local FPS={Enabled=false,Generation=0,Revision=0,
     Originals={},
     Detached={},HiddenOriginals={},
     Seen={},
-    LobbyBounds=nil,LobbyFloorY=nil,
+    LobbyBounds=nil,LobbyFloorY=nil,LobbyOrigin=nil,
     GetMode=nil,IsArenaPoint=nil,Processed=0,Hidden=0}
 local fpsSetEnabled,fpsRestore
 
@@ -325,13 +325,10 @@ local function fpsExplicitLobby(inst)
 end
 local function fpsProtectedArena(part)
     if not part or not part:IsA('BasePart') then return false end
+    if fpsExplicitLobby(part) then return false end
     if fpsArenaContainer(part) then return true end
     local p=part.Position
-    
     if FPS.IsArenaPoint and FPS.IsArenaPoint(p) then return true end
-    
-    
-    if fpsExplicitLobby(part) then return false end
     
     if p.Y>=8 and p.Y<=145 then
         for _,area in ipairs(fallbackArenas) do
@@ -356,6 +353,9 @@ end
 local function fpsFindLobbyBounds(all)
     local root=me.Character and me.Character:FindFirstChild('HumanoidRootPart')
     local atLobby=FPS.GetMode and FPS.GetMode()=='Lobby'
+    if root and atLobby and not fpsProtectedArena(root) then
+        FPS.LobbyOrigin=root.Position
+    end
     local seed,score=nil,-math.huge
     for _,inst in ipairs(all) do
         if fpsGreenFloor(inst) and not fpsProtectedArena(inst) then
@@ -487,29 +487,70 @@ end
 
 local function fpsCullWorldPart(part)
     if not part or not part:IsA('BasePart') or not part.Parent then return false end
-    
     if fpsProtectedArena(part) then return false end
     if fpsInsideLobby(part) then return true end
+
+    local pos=part.Position
     local b=FPS.LobbyBounds
-    if not b or not FPS.LobbyFloorY or not part.Anchored then return false end
-    local p=part.Position
-    local s=part.Size
-    
-    
-    local insideNearby=p.X>=b.minX-75 and p.X<=b.maxX+75
-        and p.Z>=b.minZ-75 and p.Z<=b.maxZ+75
-    if not insideNearby or math.max(s.X,s.Z)>30 then return false end
-    if p.Y<FPS.LobbyFloorY-34 or p.Y>FPS.LobbyFloorY+24 then return false end
-    local belowIsland=p.Y+s.Y*0.5<FPS.LobbyFloorY-3
+    local origin=FPS.LobbyOrigin
+    local floorY=FPS.LobbyFloorY
+    if not floorY and origin then floorY=origin.Y-4 end
+    if not floorY then return false end
+    if pos.Y<floorY-65 or pos.Y>floorY+95 then return false end
+
+    local near=false
+    if b then
+        near=pos.X>=b.minX-215 and pos.X<=b.maxX+215
+            and pos.Z>=b.minZ-215 and pos.Z<=b.maxZ+215
+    elseif origin then
+        local dx,dz=pos.X-origin.X,pos.Z-origin.Z
+        near=dx*dx+dz*dz<=235*235
+    end
+    if not near then return false end
+
     local name=fpsName(part.Name)
-    local debrisName=name:find('rock',1,true)
+    local seaName=name:find('rock',1,true)
+        or name:find('stone',1,true)
         or name:find('island',1,true)
         or name:find('debris',1,true)
         or name:find('chunk',1,true)
         or name:find('floating',1,true)
         or name:find('tree',1,true)
-    return belowIsland or debrisName~=nil
+        or name:find('grass',1,true)
+        or name:find('dirt',1,true)
+    local node=part.Parent
+    local depth=0
+    while not seaName and node and node~=W and depth<5 do
+        local n=fpsName(node.Name)
+        seaName=n:find('rock',1,true) or n:find('stone',1,true)
+            or n:find('island',1,true) or n:find('floating',1,true)
+            or n:find('decor',1,true) or n:find('tree',1,true)
+        node=node.Parent
+        depth=depth+1
+    end
+
+    local size=part.Size
+    local biggest=math.max(size.X,size.Y,size.Z)
+    if biggest>80 then return false end
+    local belowSea=pos.Y+size.Y*0.5<floorY-3
+    local color=part.Color
+    local gray=math.abs(color.R-color.G)<0.09
+        and math.abs(color.G-color.B)<0.09
+        and color.R>0.30 and color.R<0.91
+    local grass=color.G>0.38 and color.G>color.R*1.35
+        and color.G>color.B*1.35
+    local brown=color.R>0.22 and color.R>color.B*1.45
+        and color.G>color.B*1.25 and color.R>=color.G*0.75
+    local sphere=(part:IsA('Part') and part.Shape==Enum.PartType.Ball)
+        or name=='ball' or name=='orb' or name=='sphere'
+    if not part.Anchored then
+        return sphere and biggest<=18
+    end
+    return (seaName~=nil) or belowSea
+        or (biggest<=65 and (gray or grass or brown))
+        or biggest<=12
 end
+
 local function fpsCullWorldInst(inst)
     local p=fpsWorldPart(inst)
     return p and fpsCullWorldPart(p) or false
@@ -528,14 +569,22 @@ local function fpsEssential(inst)
         end
         local n=fpsName(node.Name)
         if n=='bowling ball' or n=='default' or n=='ball'
-            or n=='volleyball' or n=='balls' or n=='projectiles'
-            or n=='indicators' or n=='ballshadow'
-            or n=='ballindicator' or n=='hitmarker'
-            or fpsCriticalName(n) then return true end
+            or n=='volleyball' or n=='balls' or n=='projectiles' then
+            if node==W:FindFirstChild('Bowling Ball')
+                or node==W:FindFirstChild('Default') then
+                return true
+            end
+            local world=fpsWorldPart(node)
+            if world and fpsProtectedArena(world) then return true end
+        elseif n=='indicators' or n=='ballshadow'
+            or n=='ballindicator' or n=='hitmarker' then
+            return true
+        elseif fpsCriticalName(n) then
+            return true
+        end
         node=node.Parent
         depth=depth+1
     end
-    
     return npc and not fpsLobbyDecor(inst)
 end
 
@@ -558,10 +607,39 @@ local function fpsDetach(inst)
         end
     end
 end
+local function fpsHideSpinText(inst)
+    if not inst or not inst:IsA('TextLabel') then return false end
+    local ok,content=pcall(function() return inst.Text end)
+    if not ok or type(content)~='string' then return false end
+    local normalized=fpsName(content):gsub('%s+',' ')
+    if not (normalized:find('free spin',1,true)
+        or normalized:find('freespin',1,true)
+        or normalized:find('free spin in',1,true)) then return false end
+    local node=inst.Parent
+    while node and node~=W and not node:IsA('ScreenGui') do
+        if node:IsA('BillboardGui') or node:IsA('SurfaceGui') then
+            fpsChange(node,'Enabled',false)
+            return true
+        end
+        node=node.Parent
+    end
+    local parent=inst.Parent
+    if parent and (parent:IsA('Frame') or parent:IsA('CanvasGroup')) then
+        fpsChange(parent,'Visible',false)
+    else
+        fpsChange(inst,'Visible',false)
+    end
+    return true
+end
+
 local function fpsProcess(inst)
     if not FPS.Enabled or not inst or not inst.Parent then return end
-    if not inst:IsDescendantOf(W) then return end
     if FPS.Seen[inst] then return end
+    if inst:IsA('TextLabel') and fpsHideSpinText(inst) then
+        FPS.Seen[inst]=true
+        return
+    end
+    if not inst:IsDescendantOf(W) then return end
     FPS.Seen[inst]=true
 
     local class=inst.ClassName
@@ -634,6 +712,13 @@ local function fpsScan(generation)
             began=os.clock()
         end
     end
+    local playerGui=me:FindFirstChildOfClass('PlayerGui')
+    if playerGui and FPS.Enabled and generation==FPS.Generation then
+        for _,inst in ipairs(playerGui:GetDescendants()) do
+            if stopped or not FPS.Enabled or generation~=FPS.Generation then return end
+            if inst:IsA('TextLabel') then fpsProcess(inst) end
+        end
+    end
     table.clear(all)
 end
 fpsRestore=function()
@@ -685,6 +770,12 @@ end
 links[#links+1]=W.DescendantAdded:Connect(function(inst)
     if FPS.Enabled then fpsProcess(inst) end
 end)
+local playerGui=me:FindFirstChildOfClass('PlayerGui')
+if playerGui then
+    links[#links+1]=playerGui.DescendantAdded:Connect(function(inst)
+        if FPS.Enabled and inst:IsA('TextLabel') then fpsProcess(inst) end
+    end)
+end
 end 
 
 
