@@ -532,8 +532,98 @@ local function fpsDecorOnly(inst,part)
     return fpsLobbyDecor(inst)
 end
 
+local fpsManualPlace=98979169190595
+local fpsManualUniverse=10774204862
+local fpsManualTargets={
+    {container='GameObjects',name='LobbyEdgeWall',class='Part',
+        pos=Vector3.new(93.134,68.05,10.816),
+        size=Vector3.new(1,60.3,23.5),radius=2.5},
+    {container='GameObjects',name='LobbyFloor',class='Part',
+        pos=Vector3.new(88.448,38.616,10.918),
+        size=Vector3.new(11.932,0.719,12.798),radius=2.5},
+    {container='GameObjects',name='LobbyFloor',class='Part',
+        pos=Vector3.new(86.284,38.4,10.907),
+        size=Vector3.new(14.084,1,21.641),radius=2.5},
+    {container='GameObjects',name='BountyNpc',class='Model',
+        pos=Vector3.new(89.664,42.267,11.512),
+        size=Vector3.new(5.96,6.959,4.103),radius=6},
+    {container='Map',name='Hay Bay ',class='Model',
+        pos=Vector3.new(84.689,40.644,12.308),
+        size=Vector3.new(3.488,6.95,4.3),radius=3},
+    {container='Map',name='Model',class='Model',
+        pos=Vector3.new(113.242,26.046,-0.132),
+        size=Vector3.new(23.677,67.156,104.039),radius=5}
+}
+local fpsManualRoots=setmetatable({}, {__mode='k'})
+local function fpsManualRootMatches(node)
+    if fpsManualRoots[node] then return true end
+    local parent=node.Parent
+    if not parent or parent.Parent~=W or not parent:IsA('Folder') then return false end
+    if parent.Name~='GameObjects' and parent.Name~='Map' then return false end
+    for _,target in ipairs(fpsManualTargets) do
+        if parent.Name==target.container
+            and node.Name==target.name and node.ClassName==target.class then
+            local cf,size
+            local ok=pcall(function()
+                if node:IsA('BasePart') then
+                    cf=node.CFrame
+                    size=node.Size
+                elseif node:IsA('Model') then
+                    cf,size=node:GetBoundingBox()
+                end
+            end)
+            if ok and cf and size
+                and (cf.Position-target.pos).Magnitude<=target.radius then
+                local delta=size-target.size
+                local tolerance=node:IsA('Model') and 0.35 or 0.14
+                if math.abs(delta.X)<=math.max(1,target.size.X*tolerance)
+                    and math.abs(delta.Y)<=math.max(1,target.size.Y*tolerance)
+                    and math.abs(delta.Z)<=math.max(1,target.size.Z*tolerance) then
+                    fpsManualRoots[node]=true
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function fpsIsManualSelection(inst)
+    if game.GameId~=fpsManualUniverse or game.PlaceId~=fpsManualPlace then
+        return false
+    end
+    local node=inst
+    while node and node~=W do
+        if (node:IsA('Model') or node:IsA('BasePart'))
+            and fpsManualRootMatches(node) then
+            return true
+        end
+        node=node.Parent
+    end
+    return false
+end
+
+local function fpsApplyManualSelection(inst)
+    if inst:IsA('BasePart') then
+        fpsHide(inst)
+    elseif inst:IsA('Decal') or inst:IsA('Texture') then
+        fpsChange(inst,'Transparency',1)
+    elseif inst:IsA('BillboardGui') or inst:IsA('SurfaceGui')
+        or inst:IsA('ParticleEmitter') or inst:IsA('Trail')
+        or inst:IsA('Beam') or inst:IsA('ProximityPrompt')
+        or inst:IsA('PointLight') or inst:IsA('SpotLight')
+        or inst:IsA('SurfaceLight') or inst:IsA('Highlight') then
+        fpsChange(inst,'Enabled',false)
+    end
+end
+
 local function fpsProcess(inst)
     if not FPS.Enabled or not inst or not inst.Parent then return end
+    if fpsIsManualSelection(inst) then
+        FPS.Seen[inst]=true
+        fpsApplyManualSelection(inst)
+        return
+    end
     if fpsProtectBallVisual(inst) then
         FPS.Seen[inst]=true
         return
