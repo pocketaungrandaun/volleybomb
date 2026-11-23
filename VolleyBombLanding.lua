@@ -2655,7 +2655,7 @@ return function(expectedUniverse, core, runner)
     end
 
     local current=environ.VolleyBombLanding
-    if type(current)~='table' or current.Version~='9.7' then return end
+    if type(current)~='table' or current.Version~='9.8' then return end
 
     
     

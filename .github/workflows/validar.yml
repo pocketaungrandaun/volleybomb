@@ -1,0 +1,13 @@
+name: Validar módulos e pacote
+on:
+  push:
+    branches: [main, refactor/modulos]
+  pull_request:
+
+jobs:
+  conferir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirmar script gerado
+        run: python3 tools/build.py --check
