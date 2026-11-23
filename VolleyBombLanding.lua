@@ -806,22 +806,105 @@ local function fpsHideTerrainWater()
     fpsChange(terrain,'WaterWaveSpeed',0)
 end
 
-local function fpsDecorOnly(inst,part)
-    if fpsIsGameplayBall(inst) then return false end
-    if part and (fpsIsGameplayBall(part) or fpsProtectedArena(part)) then
-        return false
-    end
-    if fpsExplicitLobby(inst) then return true end
+local function fpsMatchProtected(inst)
+    if not inst or not inst.Parent then return false end
+    if fpsIsGameplayBall(inst) then return true end
+    local part=inst:IsA('BasePart') and inst or fpsWorldPart(inst)
     if not part then return false end
-    if not fpsCullWorldPart(part) then
-        if part.Anchored and fpsStrongDecorName(part.Name)
-            and not fpsProtectedArena(part) then
-            return true
+    if fpsIsGameplayBall(part) or fpsProtectedArena(part) then return true end
+    if fpsExplicitLobby(part) then return false end
+
+    local n=fpsName(part.Name)
+    if n:find('lobby',1,true) then return false end
+    if n=='floor' or n=='ground' or n=='baseplate'
+        or n=='court' or n=='net' or n=='netpost'
+        or n=='boundary' or n=='wall'
+        or n:find('court',1,true)
+        or n:find('arena',1,true)
+        or n:find('ranked',1,true) then
+        return true
+    end
+
+    for _,arena in ipairs({'Main','Practice'}) do
+        for _,zone in ipairs(zones[arena]) do
+            if typeof(zone)=='Instance' and zone:IsA('BasePart') and zone.Parent then
+                local cf=zone.CFrame:ToObjectSpace(part.CFrame)
+                local radius=math.min(part.Size.Magnitude*0.5,100)
+                if math.abs(cf.Position.X)<=zone.Size.X*0.5+radius+6
+                    and math.abs(cf.Position.Z)<=zone.Size.Z*0.5+radius+6
+                    and math.abs(cf.Position.Y)<=zone.Size.Y*0.5+radius+70 then
+                    return true
+                end
+            end
         end
+    end
+
+    local root=me.Character and me.Character:FindFirstChild('HumanoidRootPart')
+    local mode=FPS.GetMode and FPS.GetMode() or 'Lobby'
+    if root and (mode=='Main' or mode=='Practice') then
+        local delta=part.Position-root.Position
+        if math.abs(delta.X)<=120 and math.abs(delta.Z)<=120
+            and math.abs(delta.Y)<=75 then return true end
+    end
+
+    local now=W:GetServerTimeNow()
+    for _,arena in ipairs({'Main','Practice'}) do
+        local state=states[arena]
+        if state and type(state.EndTime)=='number'
+            and now<=state.EndTime+0.6 then
+            local ball=W:FindFirstChild(arena=='Main' and 'Bowling Ball' or 'Default')
+            if ball and ball:IsA('BasePart') then
+                local delta=part.Position-ball.Position
+                if math.abs(delta.X)<=100 and math.abs(delta.Z)<=100
+                    and math.abs(delta.Y)<=75 then return true end
+            end
+        end
+    end
+    return false
+end
+
+local function fpsRestoreMatchObject(inst)
+    if not fpsMatchProtected(inst) then return false end
+    local props=FPS.Originals[inst]
+    if props then
+        for property,original in pairs(props) do
+            pcall(function() inst[property]=original end)
+        end
+        FPS.Originals[inst]=nil
+    end
+    local alpha=FPS.HiddenOriginals[inst]
+    if alpha~=nil then
+        pcall(function() inst.LocalTransparencyModifier=alpha end)
+        FPS.HiddenOriginals[inst]=nil
+    end
+    FPS.CacheTargets[inst]=nil
+    FPS.Seen[inst]=nil
+    return true
+end
+
+local function fpsDecorOnly(inst,part)
+    if not part or not part:IsA('BasePart') or not part.Anchored then
         return false
     end
-    if part.Anchored then return true end
-    return fpsLobbyDecor(inst)
+    if fpsMatchProtected(inst) then return false end
+    local named=false
+    local node=inst
+    local depth=0
+    while node and node~=W and depth<16 do
+        local n=fpsName(node.Name)
+        if fpsCriticalName(n) then return false end
+        if fpsStrongDecorName(n)
+            or n:find('rock',1,true) or n:find('stone',1,true)
+            or n:find('island',1,true) or n:find('floating',1,true)
+            or n:find('scenery',1,true) then
+            named=true
+        end
+        node=node.Parent
+        depth=depth+1
+    end
+    if not named then return false end
+    return fpsExplicitLobby(inst) or fpsInsideLobby(part)
+        or fpsCullWorldPart(part)
 end
 
 local fpsManualPlace=98979169190595
@@ -911,14 +994,15 @@ end
 
 local function fpsProcess(inst)
     if not FPS.Enabled or not inst or not inst.Parent then return end
-    if fpsIsManualSelection(inst) then
-        FPS.Seen[inst]=true
-        fpsApplyManualSelection(inst)
-        return
-    end
     if fpsProtectBallVisual(inst) then
         fpsNormalizeBall(inst)
         FPS.Seen[inst]=true
+        return
+    end
+    if fpsRestoreMatchObject(inst) then return end
+    if fpsIsManualSelection(inst) then
+        FPS.Seen[inst]=true
+        fpsApplyManualSelection(inst)
         return
     end
     local waterPart=inst:IsA('BasePart') and inst or fpsWorldPart(inst)
@@ -1233,6 +1317,22 @@ links[#links+1]=Run.Heartbeat:Connect(function(dt)
     if fpsCosmeticCheckAt<0.75 then return end
     fpsCosmeticCheckAt=0
     fpsHideTerrainWater()
+    local toRestore={}
+    local checked={}
+    for inst in pairs(FPS.HiddenOriginals) do
+        if inst.Parent and fpsMatchProtected(inst) then
+            toRestore[#toRestore+1]=inst
+            checked[inst]=true
+        end
+    end
+    for inst in pairs(FPS.Originals) do
+        if inst.Parent and not checked[inst] and fpsMatchProtected(inst) then
+            toRestore[#toRestore+1]=inst
+        end
+    end
+    for _,inst in ipairs(toRestore) do
+        fpsRestoreMatchObject(inst)
+    end
     for root in pairs(FPS.BallRoots) do
         if root.Parent and fpsIsGameplayBall(root) then
             fpsNormalizeBall(root)

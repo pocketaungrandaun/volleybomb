@@ -16,3 +16,5 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y lua5.4
           luac5.4 -p tools/VolleyBomb_ObjectLogger.lua
+      - name: Proteger quadras e bolas contra regressoes
+        run: python3 tools/test_fps_safety.py
