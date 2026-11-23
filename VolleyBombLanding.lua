@@ -1039,20 +1039,22 @@ local function fpsReplayCache(generation)
     fpsHideTerrainWater()
     local targets=FPS.CacheTargets
     local pending=FPS.CachePending
-    local visited=0
-    for inst in pairs(targets) do
+    local cached={}
+    for inst in pairs(targets) do cached[#cached+1]=inst end
+    local total=math.max(1,#cached)
+    for i,inst in ipairs(cached) do
         if stopped or not FPS.Enabled or generation~=FPS.Generation then return end
         if inst.Parent then
             fpsProcess(inst)
         else
             targets[inst]=nil
         end
-        visited=visited+1
-        if visited%300==0 then
-            fpsLoadingProgress(generation,0.10+0.58*(visited/(visited+300)))
-            task.wait()
+        if i%300==0 or i==#cached then
+            fpsLoadingProgress(generation,0.10+0.58*(i/total))
+            if i%300==0 then task.wait() end
         end
     end
+    table.clear(cached)
     fpsLoadingProgress(generation,0.72,'Verificando objetos novos...')
     local checked=0
     for inst in pairs(pending) do
