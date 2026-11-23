@@ -690,38 +690,123 @@ local function fpsProcess(inst)
     end
 end
 
+local function fpsLoadingHide()
+    local loading=FPS.Loading
+    FPS.Loading=nil
+    if loading and loading.Gui then
+        pcall(function() loading.Gui:Destroy() end)
+    end
+end
+
+local function fpsLoadingShow()
+    fpsLoadingHide()
+    local holder=me:FindFirstChildOfClass('PlayerGui')
+    if type(gethui)=='function' then
+        local ok,ui=pcall(gethui)
+        if ok and typeof(ui)=='Instance' then holder=ui end
+    end
+    if not holder then return end
+    local gui=make('ScreenGui',{
+        Name='VolleyBombFPSTurboLoading',ResetOnSpawn=false,
+        IgnoreGuiInset=true,DisplayOrder=250,
+        ZIndexBehavior=Enum.ZIndexBehavior.Sibling},holder)
+    local overlay=make('Frame',{
+        Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.fromRGB(7,10,15),
+        BackgroundTransparency=0.48,BorderSizePixel=0,Active=false,ZIndex=1},gui)
+    local panel=make('Frame',{
+        AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),
+        Size=UDim2.fromOffset(330,146),BackgroundColor3=Color3.fromRGB(18,21,28),
+        BorderSizePixel=0,Active=false,ZIndex=2},overlay)
+    make('UICorner',{CornerRadius=UDim.new(0,14)},panel)
+    make('UIStroke',{Color=Color3.fromRGB(48,56,65),Thickness=1},panel)
+    make('TextLabel',{
+        Text='FPS TURBO',Font=Enum.Font.GothamBold,TextSize=15,
+        TextColor3=Color3.fromRGB(104,234,181),TextXAlignment=Enum.TextXAlignment.Left,
+        BackgroundTransparency=1,Position=UDim2.fromOffset(20,17),
+        Size=UDim2.fromOffset(290,24),ZIndex=3},panel)
+    local detail=make('TextLabel',{
+        Text='Preparando otimização...',Font=Enum.Font.Gotham,
+        TextColor3=Color3.fromRGB(204,210,219),TextSize=14,
+        TextXAlignment=Enum.TextXAlignment.Left,BackgroundTransparency=1,
+        Position=UDim2.fromOffset(20,54),Size=UDim2.fromOffset(290,23),
+        ZIndex=3},panel)
+    local track=make('Frame',{
+        BackgroundColor3=Color3.fromRGB(49,54,63),
+        BorderSizePixel=0,Position=UDim2.fromOffset(20,96),
+        Size=UDim2.fromOffset(290,8),ZIndex=3},panel)
+    make('UICorner',{CornerRadius=UDim.new(1,0)},track)
+    local bar=make('Frame',{
+        BackgroundColor3=Color3.fromRGB(104,234,181),
+        BorderSizePixel=0,Size=UDim2.fromScale(0,1),ZIndex=4},track)
+    make('UICorner',{CornerRadius=UDim.new(1,0)},bar)
+    local percent=make('TextLabel',{
+        Text='0%',Font=Enum.Font.Gotham,TextSize=12,
+        TextColor3=Color3.fromRGB(142,153,168),
+        TextXAlignment=Enum.TextXAlignment.Right,BackgroundTransparency=1,
+        Position=UDim2.fromOffset(246,114),
+        Size=UDim2.fromOffset(64,20),ZIndex=3},panel)
+    FPS.Loading={Gui=gui,Bar=bar,Detail=detail,Percent=percent}
+end
+
+local function fpsLoadingProgress(generation,fraction,message)
+    if not FPS.Enabled or FPS.Generation~=generation then return end
+    local loading=FPS.Loading
+    if not loading or not loading.Gui or not loading.Gui.Parent then return end
+    local value=math.clamp(fraction,0,1)
+    loading.Bar.Size=UDim2.fromScale(value,1)
+    loading.Percent.Text=string.format('%d%%',math.floor(value*100+0.5))
+    if message then loading.Detail.Text=message end
+end
+
 local function fpsScan(generation)
+    fpsLoadingProgress(generation,0.03,'Analisando cenário...')
     local all=W:GetDescendants()
     fpsFindLobbyBounds(all)
+    fpsLoadingProgress(generation,0.05,'Ocultando objetos do lobby...')
     local began=os.clock()
-    
-    
+    local total=math.max(1,#all)
+
     for i,inst in ipairs(all) do
         if stopped or not FPS.Enabled or generation~=FPS.Generation then return end
         if inst:IsA('BasePart') and fpsInsideLobby(inst) then fpsProcess(inst) end
+        if i%350==0 or i==#all then
+            fpsLoadingProgress(generation,0.05+0.33*(i/total))
+        end
         if i%550==0 and os.clock()-began>0.018 then
             task.wait()
             began=os.clock()
         end
     end
+    fpsLoadingProgress(generation,0.38,'Removendo texturas e decorações...')
     for i,inst in ipairs(all) do
         if stopped or not FPS.Enabled or generation~=FPS.Generation then return end
         fpsProcess(inst)
+        if i%300==0 or i==#all then
+            fpsLoadingProgress(generation,0.38+0.56*(i/total))
+        end
         if i%360==0 and os.clock()-began>0.014 then
             task.wait()
             began=os.clock()
         end
     end
+    fpsLoadingProgress(generation,0.94,'Finalizando otimização...')
     local playerGui=me:FindFirstChildOfClass('PlayerGui')
     if playerGui and FPS.Enabled and generation==FPS.Generation then
-        for _,inst in ipairs(playerGui:GetDescendants()) do
+        local uiObjects=playerGui:GetDescendants()
+        local uiTotal=math.max(1,#uiObjects)
+        for i,inst in ipairs(uiObjects) do
             if stopped or not FPS.Enabled or generation~=FPS.Generation then return end
             if inst:IsA('TextLabel') then fpsProcess(inst) end
+            if i%100==0 or i==#uiObjects then
+                fpsLoadingProgress(generation,0.94+0.06*(i/uiTotal))
+            end
         end
     end
     table.clear(all)
+    fpsLoadingProgress(generation,1,'Otimização concluída')
 end
 fpsRestore=function()
+    fpsLoadingHide()
     
     
     local pending=FPS.Detached
@@ -762,7 +847,12 @@ fpsSetEnabled=function(enabled)
     FPS.Enabled=enabled
     if enabled then
         local generation=FPS.Generation
-        task.spawn(function() fpsScan(generation) end)
+        fpsLoadingShow()
+        task.spawn(function()
+            local ok,err=pcall(fpsScan,generation)
+            if not ok then warn('[VolleyBomb FPS Turbo] '..tostring(err)) end
+            if FPS.Generation==generation then fpsLoadingHide() end
+        end)
     else
         fpsRestore()
     end
