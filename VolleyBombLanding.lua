@@ -47,7 +47,7 @@ local hasV65Preferences=false
 
 local function loadSettings(data)
     if type(data)~='table' then return end
-    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' then hasV65Preferences=true end
+    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' or data.Version=='9.17' then hasV65Preferences=true end
     for _,key in ipairs(savedKeys) do
         local value=data[key]
         if key=='DiveLead' then
@@ -98,7 +98,7 @@ C.Practice=true
 C.SteerDive=true
 
 local function saveSettings()
-    local data={Version='9.16',UI={}}
+    local data={Version='9.17',UI={}}
     for _,key in ipairs(savedKeys) do data[key]=C[key] end
     for _,key in ipairs({'IconX','IconY','PanelX','PanelY'}) do
         data.UI[key]=uiPrefs[key]
@@ -2388,7 +2388,7 @@ local theme={
     blue=Color3.fromRGB(43,184,246),
     inactive=Color3.fromRGB(123,119,117)
 }
-local width,height=600,366
+local width,height=600,255
 local panel=make('CanvasGroup',{
     Name='GlassMenu',Size=UDim2.fromOffset(width,height),
     AnchorPoint=Vector2.new(0.5,0.5),
@@ -2507,10 +2507,9 @@ local function applyToggle(key)
     if key=='SmartDive' then updateEIntercept() end
 end
 
-local function feature(title,desc,key,x,y,w,h)
+local function feature(title,key,x,y,w,h)
     local tile=card(x,y,w,h)
-    label(tile,title,15,12,w-90,29,15,false)
-    label(tile,desc,15,48,w-30,20,11,true)
+    label(tile,title,16,math.floor((h-29)/2),w-90,29,15,false)
     local toggleButton,refresh=switch(tile,w-62,14,key)
     links[#links+1]=toggleButton.MouseButton1Click:Connect(function()
         applyToggle(key)
@@ -2523,120 +2522,31 @@ local function feature(title,desc,key,x,y,w,h)
     return refresh
 end
 
--- Todas as opcoes na mesma pagina.
-refreshSmart=feature('Smart Dive','Assistencia inteligente no mergulho',
-    'SmartDive',18,25,276,99)
-feature('Optimizer','Otimiza os elementos visuais',
-    'FPSBoost',306,25,276,99)
-feature('Quick Look','Olha para o sacador no inicio',
-    'CameraServe',18,136,276,99)
-feature('Indicator','Indica onde a bola vai cair',
-    'Indicator',306,136,276,99)
 
--- Fake Shift: clicar no cartao configura a tecla.
--- Clicar no interruptor habilita/desabilita.
-local fake=card(18,247,564,74)
-label(fake,'Fake Shift',15,9,360,29,15,false)
-local fakeKeyInfo=label(fake,'KEY: '..C.SpikeKey..'   /   Clique para alterar a tecla',
-    15,38,445,22,11,true)
-local fakeSwitch,refreshFakeSwitch=switch(fake,502,13,'SpikeDirection')
+-- Menu apenas com nomes, sem descricoes.
+refreshSmart=feature('Smart Dive','SmartDive',18,18,276,66)
+feature('Optimizer','FPSBoost',306,18,276,66)
+feature('Quick Look','CameraServe',18,94,276,66)
+feature('Indicator','Indicator',306,94,276,66)
+
+-- Fake Shift: clique no cartao e depois pressione uma tecla.
+-- O interruptor a direita continua habilitando/desabilitando.
+local fake=card(18,170,564,66)
+label(fake,'Fake Shift',16,18,405,29,15,false)
+local fakeSwitch,refreshFakeSwitch=switch(fake,502,20,'SpikeDirection')
 links[#links+1]=fakeSwitch.MouseButton1Click:Connect(function()
     applyToggle('SpikeDirection')
     refreshFakeSwitch(true)
 end)
-
--- Caixa de configuracao exibida somente quando Fake Shift e clicado.
--- Nenhuma camada escurece a tela do Roblox.
-local modal=make('Frame',{
-    Name='KeyConfiguration',Visible=false,BackgroundColor3=Color3.fromRGB(48,47,48),
-    BackgroundTransparency=0.25,BorderSizePixel=0,
-    Position=UDim2.fromOffset(108,91),Size=UDim2.fromOffset(384,177),
-    ZIndex=12
-},panel)
-make('UICorner',{CornerRadius=UDim.new(0,14)},modal)
-make('UIStroke',{
-    Color=theme.border,Transparency=0.3,Thickness=1
-},modal)
-local modalTitle=label(modal,'Fake Shift  /  Alterar tecla',18,13,345,28,16,false)
-modalTitle.ZIndex=13
-local modalDesc=label(modal,'Aperte uma letra (exceto W, A, S, D, E)',
-    18,44,346,27,11,true)
-modalDesc.ZIndex=13
-local modalKey=make('TextLabel',{
-    Text='TECLA: '..C.SpikeKey,Font=Enum.Font.GothamBold,
-    TextSize=17,TextColor3=theme.text,BackgroundColor3=theme.card,
-    BackgroundTransparency=0.27,BorderSizePixel=0,
-    Position=UDim2.fromOffset(18,81),Size=UDim2.fromOffset(348,44),
-    ZIndex=13
-},modal)
-make('UICorner',{CornerRadius=UDim.new(0,10)},modalKey)
-local cancelButton=make('TextButton',{
-    Text='CANCELAR',Font=Enum.Font.GothamBold,TextSize=11,
-    TextColor3=theme.text,BackgroundColor3=theme.card,
-    BackgroundTransparency=0.27,BorderSizePixel=0,
-    Position=UDim2.fromOffset(244,136),
-    Size=UDim2.fromOffset(122,29),ZIndex=13
-},modal)
-make('UICorner',{CornerRadius=UDim.new(0,8)},cancelButton)
-
-local function closeKeyModal()
-    spikeCaptureKey=false
-    modal.Visible=false
-    if spikeKeyRefresh then spikeKeyRefresh() end
-end
-spikeKeyRefresh=function()
-    fakeKeyInfo.Text='KEY: '..C.SpikeKey..'   /   Clique para alterar a tecla'
-    modalKey.Text=spikeCaptureKey and 'PRESSIONE UMA TECLA...' or
-        ('TECLA: '..C.SpikeKey)
-    if not spikeCaptureKey then modal.Visible=false end
-end
+spikeKeyRefresh=function() end
 links[#links+1]=fake.MouseButton1Click:Connect(function()
-    if not modal.Visible then
-        modal.Visible=true
-        spikeCaptureKey=true
-        spikeHeld=false
-        clearSpikeLock()
-        spikeKeyRefresh()
-    end
+    spikeCaptureKey=true
+    spikeHeld=false
+    clearSpikeLock()
 end)
-links[#links+1]=cancelButton.MouseButton1Click:Connect(closeKeyModal)
 
--- Rodape discreto preservando informacoes que ja existiam.
-local statusDot=make('Frame',{
-    Position=UDim2.fromOffset(25,343),
-    Size=UDim2.fromOffset(8,8),BorderSizePixel=0,
-    BackgroundColor3=theme.muted
-},panel)
-make('UICorner',{CornerRadius=UDim.new(1,0)},statusDot)
-local stats=label(panel,'LOBBY',41,331,390,30,10,true)
-local saveStatus=label(panel,'',464,331,110,30,10,true)
-saveStatus.TextXAlignment=Enum.TextXAlignment.Right
-local function refreshSaveStatus()
-    saveStatus.Text=saveLocation=='arquivo' and 'SAVED' or 'SESSION'
-end
 saveSettings()
-refreshSaveStatus()
 fpsSetEnabled(C.FPSBoost)
-
-local lastStats=0
-local fpsEstimate=60
-links[#links+1]=Run.RenderStepped:Connect(function(dt)
-    if dt>0.001 and dt<1 then
-        fpsEstimate=fpsEstimate*0.91+(1/dt)*0.09
-    end
-end)
-links[#links+1]=Run.Heartbeat:Connect(function()
-    if stopped or os.clock()-lastStats<0.6 then return end
-    lastStats=os.clock()
-    local mode=detectMode()
-    local modeLabel=(mode=='Main' and 'PUBLIC MATCH')
-        or (mode=='Practice' and 'PRACTICE') or 'LOBBY'
-    stats.Text=string.format('%s   /   %.0f FPS   /   %.0f ms',
-        modeLabel,fpsEstimate,ping*1000)
-    statusDot.BackgroundColor3=
-        (mode=='Main' and C.MainColor)
-        or (mode=='Practice' and C.PracticeColor) or theme.muted
-end)
 
 local opened=true
 local seq=0
@@ -2655,7 +2565,7 @@ local function openMenu(value)
         panel.Visible=true
         updateScale()
     else
-        if modal.Visible then closeKeyModal() end
+        spikeCaptureKey=false
     end
     local transition=TweenInfo.new(value and 0.2 or 0.14,
         Enum.EasingStyle.Quad,
@@ -2675,7 +2585,7 @@ end
 local menuAction='VolleyBombLanding_MenuF8'
 local lastMenuInput=-math.huge
 local function toggleMenuFromKey()
-    if stopped or spikeCaptureKey or U:GetFocusedTextBox() then return end
+    if stopped or U:GetFocusedTextBox() then return end
     local now=os.clock()
     if now-lastMenuInput<0.15 then return end
     lastMenuInput=now
@@ -2763,8 +2673,8 @@ local function stop(reason)
         env.VolleyBombLanding=nil
     end
 end
-env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.16'}
-print('[VolleyBomb v9.16] Rebote 0.60 e normal do BallState; Dive v8.0 preservado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
+env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.17'}
+print('[VolleyBomb v9.17] Rebote 0.60 e normal do BallState; Dive v8.0 preservado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
 ]=]
 
 local RUNNER = [==[
@@ -2772,11 +2682,11 @@ return function(expectedUniverse, core, runner)
     if not game:IsLoaded() then game.Loaded:Wait() end
     local universe = game.GameId
     if type(universe) ~= 'number' or universe == 0 then
-        warn('[VolleyBomb v9.16] Nao foi possivel reconhecer o universo do jogo.')
+        warn('[VolleyBomb v9.17] Nao foi possivel reconhecer o universo do jogo.')
         return
     end
     if expectedUniverse and expectedUniverse ~= universe then
-        warn('[VolleyBomb v9.16] Outro jogo detectado. Autoexecucao ignorada.')
+        warn('[VolleyBomb v9.17] Outro jogo detectado. Autoexecucao ignorada.')
         return
     end
     local replicated = game:GetService('ReplicatedStorage')
@@ -2787,7 +2697,7 @@ return function(expectedUniverse, core, runner)
     local ballState = net and (net:FindFirstChild('RE/BallState')
         or net:WaitForChild('RE/BallState', 25))
     if not ballState or not ballState:IsA('RemoteEvent') then
-        warn('[VolleyBomb v9.16] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
+        warn('[VolleyBomb v9.17] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
         return
     end
 
@@ -2838,26 +2748,26 @@ return function(expectedUniverse, core, runner)
     
     local compiled,err=loadstring(core)
     if not compiled then
-        warn('[VolleyBomb v9.16] Erro ao ler codigo principal: '..tostring(err))
+        warn('[VolleyBomb v9.17] Erro ao ler codigo principal: '..tostring(err))
         return
     end
     local ok,runtimeErr=pcall(compiled)
     if not ok then
-        warn('[VolleyBomb v9.16] Erro na execucao: '..tostring(runtimeErr))
+        warn('[VolleyBomb v9.17] Erro na execucao: '..tostring(runtimeErr))
         return
     end
 
     local current=environ.VolleyBombLanding
-    if type(current)~='table' or current.Version~='9.16' then return end
+    if type(current)~='table' or current.Version~='9.17' then return end
 
     
     
     current.CancelTeleport=function()
         local success,message=clearQueuedTeleports()
         if success then
-            print('[VolleyBomb v9.16] X: Auto-inicio desligado e fila de teleportes limpa.')
+            print('[VolleyBomb v9.17] X: Auto-inicio desligado e fila de teleportes limpa.')
         else
-            warn('[VolleyBomb v9.16] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
+            warn('[VolleyBomb v9.17] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
         end
         return success
     end
@@ -2866,12 +2776,12 @@ return function(expectedUniverse, core, runner)
     
     local cleared,why=clearQueuedTeleports()
     if not cleared then
-        warn('[VolleyBomb v9.16] Nao deu para limpar copias antigas: '..tostring(why))
+        warn('[VolleyBomb v9.17] Nao deu para limpar copias antigas: '..tostring(why))
     end
 
     local queue=getTeleportQueue()
     if not queue then
-        warn('[VolleyBomb v9.16] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
+        warn('[VolleyBomb v9.17] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
         return
     end
 
@@ -2881,28 +2791,28 @@ local core = %q
 local runner = %q
 local compiler, errorMessage = loadstring(runner)
 if not compiler then
-    warn('[VolleyBomb v9.16] Erro no auto-inicio: '..tostring(errorMessage))
+    warn('[VolleyBomb v9.17] Erro no auto-inicio: '..tostring(errorMessage))
 else
     local success, launch = pcall(compiler)
     if success and type(launch)=='function' then
         launch(expectedUniverse, core, runner)
     else
-        warn('[VolleyBomb v9.16] Auto-inicio indisponivel: '..tostring(launch))
+        warn('[VolleyBomb v9.17] Auto-inicio indisponivel: '..tostring(launch))
     end
 end
 ]=], universe, core, runner)
     local registered,queueErr=pcall(queue,queuedCode)
     if registered then
         environ.VolleyBombLandingTeleportQueued=
-            tostring(universe)..'/'..tostring(game.JobId)..'/v9.16'
-        print('[VolleyBomb v9.16] Auto-inicio preparado. X cancela o proximo servidor.')
+            tostring(universe)..'/'..tostring(game.JobId)..'/v9.17'
+        print('[VolleyBomb v9.17] Auto-inicio preparado. X cancela o proximo servidor.')
     else
-        warn('[VolleyBomb v9.16] Falha ao preparar proximo servidor: '..tostring(queueErr))
+        warn('[VolleyBomb v9.17] Falha ao preparar proximo servidor: '..tostring(queueErr))
     end
 end
 ]==]
 
 local compiled,err=loadstring(RUNNER)
-if not compiled then error('[VolleyBomb v9.16] Erro de inicializacao: '..tostring(err)) end
+if not compiled then error('[VolleyBomb v9.17] Erro de inicializacao: '..tostring(err)) end
 local start=compiled()
 start(nil,CORE,RUNNER)
