@@ -2489,9 +2489,9 @@ local function toggle(label,y,key,color,where)
 end
 
 
-refreshSmart=toggle('Dive Inteligente',0,'SmartDive',Color3.fromRGB(255,190,90))
-toggle('FPS Turbo',47,'FPSBoost',Color3.fromRGB(95,220,183))
-toggle('Olhar para sacador',94,'CameraServe',Color3.fromRGB(105,183,255))
+refreshSmart=toggle('Smart Dive',0,'SmartDive',Color3.fromRGB(255,190,90))
+toggle('Optimizer',47,'FPSBoost',Color3.fromRGB(95,220,183))
+toggle('Quick Look',94,'CameraServe',Color3.fromRGB(105,183,255))
 
 
 
