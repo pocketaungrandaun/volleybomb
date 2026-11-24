@@ -47,7 +47,7 @@ local hasV65Preferences=false
 
 local function loadSettings(data)
     if type(data)~='table' then return end
-    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' then hasV65Preferences=true end
+    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' then hasV65Preferences=true end
     for _,key in ipairs(savedKeys) do
         local value=data[key]
         if key=='DiveLead' then
@@ -98,7 +98,7 @@ C.Practice=true
 C.SteerDive=true
 
 local function saveSettings()
-    local data={Version='9.9',UI={}}
+    local data={Version='9.10',UI={}}
     for _,key in ipairs(savedKeys) do data[key]=C[key] end
     for _,key in ipairs({'IconX','IconY','PanelX','PanelY'}) do
         data.UI[key]=uiPrefs[key]
@@ -1148,15 +1148,42 @@ local function abilityTagged(raw)
 end
 
 
--- Câmera de saque (somente eventos Main/publico).
--- BallState nao informa sacador, portanto a deteccao e aproximada.
-local lastPublicBallPacket=-math.huge
+-- Camera no inicio da partida PUBLICA: sem temporizador de espera.
+-- O jogo nao expoe o sacador no BallState; usa a bola Main e proximidade.
+local lastMainPacket=-math.huge
+local lastServeTrigger=-math.huge
+local lastMainMode='Lobby'
+local mainEntryAt=-math.huge
+local mainEntryDone=false
 local cameraServeUntil=0
 local cameraServeTarget=nil
 local cameraServeBind='VolleyBombServeCamera_'..tostring(me.UserId)
 local function cancelServeCamera()
     cameraServeTarget=nil
     cameraServeUntil=0
+end
+local function closestPublicServer(origin)
+    if typeof(origin)~='Vector3' then return nil end
+    local closest,best=nil,math.huge
+    for _,player in ipairs(P:GetPlayers()) do
+        local char=player.Character
+        local root=char and char:FindFirstChild('HumanoidRootPart')
+        local hum=char and char:FindFirstChildOfClass('Humanoid')
+        if root and hum and hum.Health>0 then
+            local distance=(root.Position-origin).Magnitude
+            if distance<best then best=distance closest=player end
+        end
+    end
+    if best<=22 then return closest end
+end
+local function pointToServer(origin)
+    if not C.CameraServe or detectMode(true)~='Main' then return false end
+    local closest=closestPublicServer(origin)
+    if not closest then return false end
+    cameraServeTarget=closest
+    cameraServeUntil=os.clock()+0.7
+    lastServeTrigger=os.clock()
+    return true
 end
 Run:BindToRenderStep(cameraServeBind,Enum.RenderPriority.Camera.Value+15,function()
     if stopped or not C.CameraServe or os.clock()>=cameraServeUntil then
@@ -1171,27 +1198,44 @@ Run:BindToRenderStep(cameraServeBind,Enum.RenderPriority.Camera.Value+15,functio
     local eye=cam.CFrame.Position
     if (eye-aim).Magnitude>0.5 then cam.CFrame=CFrame.lookAt(eye,aim) end
 end)
+
+-- Detecta a entrada na arena Main no primeiro frame possivel.
+-- Se os personagens ainda nao carregaram, tenta nos frames seguintes.
+links[#links+1]=Run.Heartbeat:Connect(function()
+    if stopped then return end
+    if not C.CameraServe then
+        lastMainMode='Lobby'
+        mainEntryDone=false
+        return
+    end
+    local mode=detectMode(true)
+    if mode~='Main' then
+        lastMainMode=mode
+        mainEntryDone=false
+        return
+    end
+    if lastMainMode~='Main' then
+        mainEntryAt=os.clock()
+        mainEntryDone=false
+    end
+    lastMainMode='Main'
+    if mainEntryDone or os.clock()-mainEntryAt>2 then return end
+    local ball=W:FindFirstChild('Bowling Ball')
+    if ball and ball:IsA('BasePart') and pointToServer(ball.Position) then
+        mainEntryDone=true
+    end
+end)
 local function watchPublicServe(raw)
     if raw.Arena~='Main' then return end
     local now=os.clock()
-    local gap=now-lastPublicBallPacket
-    lastPublicBallPacket=now
-    if not C.CameraServe or gap<3.0 then return end
-    if typeof(raw.Origin)~='Vector3' then return end
-    if typeof(raw.Velocity)~='Vector3' or raw.Velocity.Magnitude<8 then return end
-    local closest,best=nil,math.huge
-    for _,player in ipairs(P:GetPlayers()) do
-        local char=player.Character
-        local root=char and char:FindFirstChild('HumanoidRootPart')
-        local hum=char and char:FindFirstChildOfClass('Humanoid')
-        if root and hum and hum.Health>0 then
-            local dist=(root.Position-raw.Origin).Magnitude
-            if dist<best then best=dist closest=player end
-        end
-    end
-    if closest and best<=22 then
-        cameraServeTarget=closest
-        cameraServeUntil=now+0.7
+    local gap=now-lastMainPacket
+    lastMainPacket=now
+    if not C.CameraServe then return end
+    -- Primeiro BallState depois de uma pausa e fallback para novos rallies.
+    -- Nenhum atraso artificial: dispara no proprio evento, se for Main.
+    if gap<1.2 or now-lastServeTrigger<1.2 then return end
+    if typeof(raw.Origin)=='Vector3' and pointToServer(raw.Origin) then
+        mainEntryDone=true
     end
 end
 
@@ -2624,7 +2668,7 @@ local function stop(reason)
 end
 links[#links+1]=close.MouseButton1Click:Connect(stop)
 env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.9'}
-print('[VolleyBomb v9.9] Rebote 0.60 e normal do BallState; Dive v8.0 preservado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
+print('[VolleyBomb v9.10] Rebote 0.60 e normal do BallState; Dive v8.0 preservado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
 ]=]
 
 local RUNNER = [==[
