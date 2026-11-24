@@ -2750,7 +2750,7 @@ local function openMenu(value)
     fade:Play()
     zoom:Play()
     bg:Play()
-    links[#links+1]=fade.Completed:Connect(function()
+    fade.Completed:Once(function()
         if not stopped and generation==seq and not opened then
             panel.Visible=false
             overlay.Visible=false
