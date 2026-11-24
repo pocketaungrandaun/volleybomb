@@ -47,7 +47,7 @@ local hasV65Preferences=false
 
 local function loadSettings(data)
     if type(data)~='table' then return end
-    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' then hasV65Preferences=true end
+    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' then hasV65Preferences=true end
     for _,key in ipairs(savedKeys) do
         local value=data[key]
         if key=='DiveLead' then
@@ -98,7 +98,7 @@ C.Practice=true
 C.SteerDive=true
 
 local function saveSettings()
-    local data={Version='9.10',UI={}}
+    local data={Version='9.11',UI={}}
     for _,key in ipairs(savedKeys) do data[key]=C[key] end
     for _,key in ipairs({'IconX','IconY','PanelX','PanelY'}) do
         data.UI[key]=uiPrefs[key]
@@ -1148,100 +1148,141 @@ local function abilityTagged(raw)
 end
 
 
--- Camera no inicio da partida PUBLICA: sem temporizador de espera.
--- O jogo nao expoe o sacador no BallState; usa a bola Main e proximidade.
-local lastMainPacket=-math.huge
-local lastServeTrigger=-math.huge
-local lastMainMode='Lobby'
-local mainEntryAt=-math.huge
-local mainEntryDone=false
-local cameraServeUntil=0
-local cameraServeTarget=nil
+-- Camera no comeco do saque publico: um unico ajuste de angulo.
+-- Nao segue a bola, nao altera CameraSubject, nao trava a camera.
 local cameraServeBind='VolleyBombServeCamera_'..tostring(me.UserId)
+local cameraSnapPlayer=nil
+local lastServeSnap=-math.huge
+local lastServeBall=nil
+local lastServeBallPosition=nil
+local serveCurrentMode='Lobby'
+local serveArmed=false
+local serveArmedAt=0
+
 local function cancelServeCamera()
-    cameraServeTarget=nil
-    cameraServeUntil=0
+    cameraSnapPlayer=nil
 end
-local function closestPublicServer(origin)
-    if typeof(origin)~='Vector3' then return nil end
+
+local function closestPublicServer(ballPosition)
+    if typeof(ballPosition)~='Vector3' then return nil end
     local closest,best=nil,math.huge
     for _,player in ipairs(P:GetPlayers()) do
         local char=player.Character
         local root=char and char:FindFirstChild('HumanoidRootPart')
         local hum=char and char:FindFirstChildOfClass('Humanoid')
         if root and hum and hum.Health>0 then
-            local distance=(root.Position-origin).Magnitude
-            if distance<best then best=distance closest=player end
+            local distance=(root.Position-ballPosition).Magnitude
+            if distance<best then
+                best=distance
+                closest=player
+            end
         end
     end
-    if best<=22 then return closest end
+    -- A bola so serve para identificar quem vai sacar.
+    -- Nunca direciona a camera para a posicao da bola.
+    if best<=16 then return closest end
+    return nil
 end
-local function pointToServer(origin)
-    if not C.CameraServe or detectMode(true)~='Main' then return false end
-    local closest=closestPublicServer(origin)
-    if not closest then return false end
-    cameraServeTarget=closest
-    cameraServeUntil=os.clock()+0.7
-    lastServeTrigger=os.clock()
-    return true
-end
+
+-- Roda apos o controlador de camera do Roblox, uma unica vez.
+-- No frame seguinte o jogador ja pode movimentar a camera normalmente.
 Run:BindToRenderStep(cameraServeBind,Enum.RenderPriority.Camera.Value+15,function()
-    if stopped or not C.CameraServe or os.clock()>=cameraServeUntil then
-        cancelServeCamera()
-        return
-    end
-    local player=cameraServeTarget
-    local root=player and player.Character and player.Character:FindFirstChild('HumanoidRootPart')
+    local target=cameraSnapPlayer
+    cameraSnapPlayer=nil
+    if stopped or not C.CameraServe or not target then return end
+    if detectMode(true)~='Main' then return end
+    local char=target.Character
+    local root=char and char:FindFirstChild('HumanoidRootPart')
     local cam=W.CurrentCamera
-    if not root or not cam then cancelServeCamera() return end
-    local aim=root.Position+Vector3.new(0,2.3,0)
+    if not root or not cam then return end
     local eye=cam.CFrame.Position
-    if (eye-aim).Magnitude>0.5 then cam.CFrame=CFrame.lookAt(eye,aim) end
+    local face=root.Position+Vector3.new(0,2,0)
+    if (face-eye).Magnitude>0.5 then
+        cam.CFrame=CFrame.lookAt(eye,face)
+    end
 end)
 
--- Detecta a entrada na arena Main no primeiro frame possivel.
--- Se os personagens ainda nao carregaram, tenta nos frames seguintes.
+-- O inicio da partida/rally e reconhecido quando o jogador entra na
+-- arena publica ou quando a bola principal reaparece/volta para o saque.
+-- Nao espera o BallState (que chega quando a bola ja esta em movimento).
 links[#links+1]=Run.Heartbeat:Connect(function()
     if stopped then return end
     if not C.CameraServe then
-        lastMainMode='Lobby'
-        mainEntryDone=false
+        serveCurrentMode='Lobby'
+        serveArmed=false
+        lastServeBall=nil
+        lastServeBallPosition=nil
+        cameraSnapPlayer=nil
         return
     end
+
     local mode=detectMode(true)
     if mode~='Main' then
-        lastMainMode=mode
-        mainEntryDone=false
+        serveCurrentMode=mode
+        serveArmed=false
+        lastServeBall=nil
+        lastServeBallPosition=nil
+        cameraSnapPlayer=nil
         return
     end
-    if lastMainMode~='Main' then
-        mainEntryAt=os.clock()
-        mainEntryDone=false
+
+    local now=os.clock()
+    if serveCurrentMode~='Main' then
+        serveArmed=true
+        serveArmedAt=now
+        lastServeBall=nil
+        lastServeBallPosition=nil
     end
-    lastMainMode='Main'
-    if mainEntryDone or os.clock()-mainEntryAt>2 then return end
+    serveCurrentMode='Main'
+
     local ball=W:FindFirstChild('Bowling Ball')
-    if ball and ball:IsA('BasePart') and pointToServer(ball.Position) then
-        mainEntryDone=true
+    if not ball or not ball:IsA('BasePart') then
+        if lastServeBall~=nil then
+            serveArmed=true
+            serveArmedAt=now
+        end
+        lastServeBall=nil
+        lastServeBallPosition=nil
+        return
+    end
+
+    local pos=ball.Position
+    local speed=ball.AssemblyLinearVelocity.Magnitude
+    local changed=ball~=lastServeBall
+    local jumped=not changed and lastServeBallPosition
+        and (pos-lastServeBallPosition).Magnitude>13 and speed<12
+
+    lastServeBall=ball
+    lastServeBallPosition=pos
+
+    if changed or jumped then
+        serveArmed=true
+        serveArmedAt=now
+    end
+    if not serveArmed then return end
+
+    -- Se a bola ja esta em voo, evita girar a camera tarde ou
+    -- selecionar alguem que encostou nela no meio da jogada.
+    if speed>14 then
+        serveArmed=false
+        return
+    end
+    if now-serveArmedAt>2.5 then
+        serveArmed=false
+        return
+    end
+    if now-lastServeSnap<0.9 then return end
+
+    local server=closestPublicServer(pos)
+    if server then
+        cameraSnapPlayer=server
+        lastServeSnap=now
+        serveArmed=false
     end
 end)
-local function watchPublicServe(raw)
-    if raw.Arena~='Main' then return end
-    local now=os.clock()
-    local gap=now-lastMainPacket
-    lastMainPacket=now
-    if not C.CameraServe then return end
-    -- Primeiro BallState depois de uma pausa e fallback para novos rallies.
-    -- Nenhum atraso artificial: dispara no proprio evento, se for Main.
-    if gap<1.2 or now-lastServeTrigger<1.2 then return end
-    if typeof(raw.Origin)=='Vector3' and pointToServer(raw.Origin) then
-        mainEntryDone=true
-    end
-end
 
 links[#links+1]=event.OnClientEvent:Connect(function(raw)
     if stopped or type(raw)~='table' then return end
-    watchPublicServe(raw)
     local arena=raw.Arena
     if not markers[arena] then return end
     if type(raw.Time)~='number' or type(raw.EndTime)~='number' then return end
@@ -2442,7 +2483,7 @@ end
 toggle('Lock-on (avatar)',0,'LockOn',Color3.fromRGB(190,160,255))
 refreshSmart=toggle('Dive Inteligente',47,'SmartDive',Color3.fromRGB(255,190,90))
 toggle('FPS Turbo',94,'FPSBoost',Color3.fromRGB(95,220,183))
-toggle('Camera no saque (publico)',141,'CameraServe',Color3.fromRGB(105,183,255))
+toggle('Olhar para sacador',141,'CameraServe',Color3.fromRGB(105,183,255))
 
 
 
@@ -2668,7 +2709,7 @@ local function stop(reason)
 end
 links[#links+1]=close.MouseButton1Click:Connect(stop)
 env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.9'}
-print('[VolleyBomb v9.10] Rebote 0.60 e normal do BallState; Dive v8.0 preservado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
+print('[VolleyBomb v9.11] Rebote 0.60 e normal do BallState; Dive v8.0 preservado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
 ]=]
 
 local RUNNER = [==[
