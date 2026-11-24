@@ -47,7 +47,7 @@ local hasV65Preferences=false
 
 local function loadSettings(data)
     if type(data)~='table' then return end
-    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' then hasV65Preferences=true end
+    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' then hasV65Preferences=true end
     for _,key in ipairs(savedKeys) do
         local value=data[key]
         if key=='DiveLead' then
@@ -98,7 +98,7 @@ C.Practice=true
 C.SteerDive=true
 
 local function saveSettings()
-    local data={Version='9.14',UI={}}
+    local data={Version='9.15',UI={}}
     for _,key in ipairs(savedKeys) do data[key]=C[key] end
     for _,key in ipairs({'IconX','IconY','PanelX','PanelY'}) do
         data.UI[key]=uiPrefs[key]
@@ -2364,111 +2364,235 @@ end)
 
 
 
+
 local holder=me:WaitForChild('PlayerGui')
 if type(gethui)=='function' then
     local ok,p=pcall(gethui)
     if ok and typeof(p)=='Instance' then holder=p end
 end
-local gui=make('ScreenGui',{Name='VolleyBombLandingUI',IgnoreGuiInset=true,
-    ResetOnSpawn=false,DisplayOrder=150,ZIndexBehavior=Enum.ZIndexBehavior.Sibling},holder)
-local width,height,iconSize=264,286,46
-local function viewport()
-    local cam=W.CurrentCamera
-    return cam and cam.ViewportSize or Vector2.new(1280,720)
+local gui=make('ScreenGui',{
+    Name='VolleyBombLandingUI',IgnoreGuiInset=true,
+    ResetOnSpawn=false,DisplayOrder=150,
+    ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+},holder)
+
+-- Design glass / graphite inspirado no tema enviado.
+-- Sem avatar flutuante: F9 mostra/oculta todo o menu.
+local theme={
+    panel=Color3.fromRGB(58,55,52),
+    raised=Color3.fromRGB(95,90,85),
+    rail=Color3.fromRGB(70,66,63),
+    text=Color3.fromRGB(244,242,239),
+    dim=Color3.fromRGB(193,188,183),
+    faint=Color3.fromRGB(152,147,143),
+    line=Color3.fromRGB(142,135,128),
+    blue=Color3.fromRGB(45,180,246),
+    inactive=Color3.fromRGB(111,109,108)
+}
+local width,height=672,404
+local overlay=make('Frame',{
+    Name='DimmedBackground',
+    Size=UDim2.fromScale(1,1),BorderSizePixel=0,
+    BackgroundColor3=Color3.fromRGB(33,31,29),
+    BackgroundTransparency=0.36,Visible=true,Active=false
+},gui)
+make('UIGradient',{
+    Color=ColorSequence.new({
+        ColorSequenceKeypoint.new(0,Color3.fromRGB(52,47,43)),
+        ColorSequenceKeypoint.new(1,Color3.fromRGB(19,19,20))
+    }),
+    Rotation=34
+},overlay)
+
+local panel=make('CanvasGroup',{
+    Name='GlassMenu',Size=UDim2.fromOffset(width,height),
+    AnchorPoint=Vector2.new(0.5,0.5),
+    Position=UDim2.fromScale(0.5,0.5),
+    BackgroundColor3=theme.panel,BackgroundTransparency=0.04,
+    BorderSizePixel=0,GroupTransparency=0,
+    Visible=true,Active=true,ClipsDescendants=true
+},gui)
+make('UICorner',{CornerRadius=UDim.new(0,18)},panel)
+make('UIStroke',{Color=theme.line,Transparency=0.52,Thickness=1},panel)
+make('UIGradient',{
+    Color=ColorSequence.new({
+        ColorSequenceKeypoint.new(0,Color3.fromRGB(91,85,79)),
+        ColorSequenceKeypoint.new(0.45,Color3.fromRGB(61,58,55)),
+        ColorSequenceKeypoint.new(1,Color3.fromRGB(40,39,39))
+    }),
+    Rotation=22
+},panel)
+local scale=make('UIScale',{Scale=1},panel)
+local function updateScale()
+    local camera=W.CurrentCamera
+    if not camera then return end
+    local vp=camera.ViewportSize
+    scale.Scale=math.clamp(math.min((vp.X-24)/width,(vp.Y-24)/height),0.48,1)
 end
-local function bound(pos,size)
-    local v=viewport()
-    return Vector2.new(math.clamp(pos.X,5,math.max(5,v.X-size.X-5)),
-        math.clamp(pos.Y,5,math.max(5,v.Y-size.Y-5)))
+updateScale()
+
+-- Barra lateral minimalista igual ao estilo da referencia.
+local rail=make('Frame',{
+    Position=UDim2.fromOffset(11,11),Size=UDim2.fromOffset(67,height-22),
+    BackgroundColor3=theme.rail,BackgroundTransparency=0.15,
+    BorderSizePixel=0
+},panel)
+make('UICorner',{CornerRadius=UDim.new(0,14)},rail)
+make('UIStroke',{Color=theme.line,Transparency=0.78,Thickness=1},rail)
+make('UIGradient',{
+    Color=ColorSequence.new(Color3.fromRGB(97,91,85),Color3.fromRGB(58,56,54)),
+    Rotation=90
+},rail)
+local emblem=make('TextLabel',{
+    Text='VB',Font=Enum.Font.GothamBold,TextSize=16,
+    TextColor3=theme.text,BackgroundColor3=Color3.fromRGB(120,114,108),
+    BackgroundTransparency=0.32,BorderSizePixel=0,
+    Position=UDim2.fromOffset(10,12),Size=UDim2.fromOffset(47,39)
+},rail)
+make('UICorner',{CornerRadius=UDim.new(0,10)},emblem)
+
+local content=make('Frame',{
+    Name='MainTab',BackgroundTransparency=1,
+    Position=UDim2.fromOffset(92,80),
+    Size=UDim2.fromOffset(563,265),Visible=true
+},panel)
+local extras=make('Frame',{
+    Name='SettingsTab',BackgroundTransparency=1,
+    Position=UDim2.fromOffset(92,80),
+    Size=UDim2.fromOffset(563,265),Visible=false
+},panel)
+local header=make('Frame',{
+    Name='DragHeader',BackgroundTransparency=1,
+    Position=UDim2.fromOffset(92,9),Size=UDim2.fromOffset(563,60),
+    Active=true
+},panel)
+make('TextLabel',{
+    Text='VOLLEYBOMB',Font=Enum.Font.GothamBold,TextSize=18,
+    TextColor3=theme.text,BackgroundTransparency=1,
+    TextXAlignment=Enum.TextXAlignment.Left,
+    Position=UDim2.fromOffset(10,7),Size=UDim2.fromOffset(300,28)
+},header)
+local pageTitle=make('TextLabel',{
+    Text='MAIN',Font=Enum.Font.GothamMedium,TextSize=11,
+    TextColor3=theme.dim,BackgroundTransparency=1,
+    TextXAlignment=Enum.TextXAlignment.Left,
+    Position=UDim2.fromOffset(11,33),Size=UDim2.fromOffset(270,19)
+},header)
+local f9Hint=make('TextLabel',{
+    Text='F9  /  HIDE',Font=Enum.Font.GothamMedium,TextSize=11,
+    TextColor3=theme.dim,BackgroundTransparency=1,
+    TextXAlignment=Enum.TextXAlignment.Right,
+    Position=UDim2.fromOffset(420,12),Size=UDim2.fromOffset(125,28)
+},header)
+
+local function miniLabel(textValue,position,size,parent,fontSize,color)
+    return make('TextLabel',{
+        Text=textValue,Font=Enum.Font.GothamMedium,TextSize=fontSize or 12,
+        TextColor3=color or theme.dim,BackgroundTransparency=1,
+        TextXAlignment=Enum.TextXAlignment.Left,
+        Position=position,Size=size
+    },parent)
 end
-local v=viewport()
-local iconStart=bound(Vector2.new(
-    uiPrefs.IconX or (v.X-iconSize-17),
-    uiPrefs.IconY or math.floor(v.Y*0.38)
-),Vector2.new(iconSize,iconSize))
-local icon=make('ImageButton',{Name='Avatar',Size=UDim2.fromOffset(iconSize,iconSize),
-    Position=UDim2.fromOffset(iconStart.X,iconStart.Y),
-    Image='rbxthumb://type=AvatarHeadShot&id='..me.UserId..'&w=150&h=150',
-    ScaleType=Enum.ScaleType.Crop,BackgroundColor3=Color3.fromRGB(25,28,34),
-    AutoButtonColor=false,BorderSizePixel=0,Active=true,ZIndex=10},gui)
-make('UICorner',{CornerRadius=UDim.new(1,0)},icon)
-make('UIStroke',{Color=Color3.fromRGB(85,245,155),Thickness=2},icon)
-local dot=make('Frame',{Size=UDim2.fromOffset(9,9),
-    Position=UDim2.new(1,-9,1,-9),BackgroundColor3=Color3.fromRGB(130,135,145),
-    BorderSizePixel=0,ZIndex=11},icon)
-make('UICorner',{CornerRadius=UDim.new(1,0)},dot)
-task.spawn(function()
-    local ok,url=pcall(function()
-        return P:GetUserThumbnailAsync(me.UserId,Enum.ThumbnailType.HeadShot,
-            Enum.ThumbnailSize.Size150x150)
-    end)
-    if ok and not stopped and icon.Parent then icon.Image=url end
-end)
-local panelStart=bound(Vector2.new(uiPrefs.PanelX or 20,uiPrefs.PanelY or 85),
-    Vector2.new(width,height))
-local panel=make('CanvasGroup',{Size=UDim2.fromOffset(width,height),
-    Position=UDim2.fromOffset(panelStart.X,panelStart.Y),BackgroundColor3=Color3.fromRGB(20,22,27),
-    BorderSizePixel=0,GroupTransparency=1,Visible=false,Active=true},gui)
-make('UICorner',{CornerRadius=UDim.new(0,12)},panel)
-make('UIStroke',{Color=Color3.fromRGB(55,59,68),Thickness=1},panel)
-local scale=make('UIScale',{Scale=0.91},panel)
-local header=make('Frame',{Size=UDim2.new(1,0,0,41),
-    BackgroundTransparency=1,Active=true},panel)
-make('TextLabel',{Text='VOLLEYBOMB',Font=Enum.Font.GothamBold,TextSize=12,
-    BackgroundTransparency=1,TextXAlignment=Enum.TextXAlignment.Left,
-    TextColor3=Color3.fromRGB(240,243,247),Position=UDim2.fromOffset(13,0),
-    Size=UDim2.new(1,-90,1,0)},header)
-local collapse=make('TextButton',{Text='−',Font=Enum.Font.GothamBold,TextSize=18,
-    BackgroundTransparency=1,TextColor3=Color3.fromRGB(190,194,202),
-    Position=UDim2.new(1,-62,0,5),Size=UDim2.fromOffset(27,30)},header)
-local close=make('TextButton',{Text='×',Font=Enum.Font.Gotham,TextSize=20,
-    BackgroundTransparency=1,TextColor3=Color3.fromRGB(190,194,202),
-    Position=UDim2.new(1,-32,0,5),Size=UDim2.fromOffset(27,30)},header)
-make('Frame',{BackgroundColor3=Color3.fromRGB(47,51,58),BorderSizePixel=0,
-    Position=UDim2.fromOffset(12,42),Size=UDim2.new(1,-24,0,1)},panel)
-local content=make('Frame',{BackgroundTransparency=1,Position=UDim2.fromOffset(12,50),
-    Size=UDim2.new(1,-24,0,height-60)},panel)
-local extras=make('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,
-    ScrollBarThickness=3,ScrollingDirection=Enum.ScrollingDirection.Y,
-    CanvasSize=UDim2.fromOffset(0,346),Position=UDim2.fromOffset(12,50),
-    Size=UDim2.new(1,-24,0,height-60),Visible=false},panel)
-local extrasButton=make('TextButton',{Text='AJUSTES',
-    Font=Enum.Font.GothamBold,TextSize=10,
-    TextColor3=Color3.fromRGB(162,198,255),
-    BackgroundTransparency=1,Position=UDim2.fromOffset(124,5),
-    Size=UDim2.fromOffset(74,30)},header)
-local extrasOpen=false
-links[#links+1]=extrasButton.MouseButton1Click:Connect(function()
-    extrasOpen=not extrasOpen
-    content.Visible=not extrasOpen
-    extras.Visible=extrasOpen
-    extrasButton.Text=extrasOpen and 'VOLTAR' or 'AJUSTES'
-end)
-local function toggle(label,y,key,color,where)
-    local b=make('TextButton',{Text='',AutoButtonColor=false,
-        BackgroundColor3=Color3.fromRGB(33,36,42),BorderSizePixel=0,
-        Position=UDim2.fromOffset(0,y),Size=UDim2.new(1,0,0,41)},where or content)
-    make('UICorner',{CornerRadius=UDim.new(0,7)},b)
-    local dot=make('Frame',{BackgroundColor3=color,BorderSizePixel=0,
-        Position=UDim2.fromOffset(11,16),Size=UDim2.fromOffset(9,9)},b)
-    make('UICorner',{CornerRadius=UDim.new(1,0)},dot)
-    make('TextLabel',{Text=label,Font=Enum.Font.GothamMedium,TextSize=12,
-        TextColor3=Color3.fromRGB(228,231,237),BackgroundTransparency=1,
-        TextXAlignment=Enum.TextXAlignment.Left,Position=UDim2.fromOffset(28,0),
-        Size=UDim2.new(1,-91,1,0)},b)
-    local status=make('TextLabel',{Font=Enum.Font.GothamBold,TextSize=11,
-        BackgroundTransparency=1,Position=UDim2.new(1,-54,0,0),
-        Size=UDim2.fromOffset(49,41)},b)
-    local function refresh()
-        status.Text=C[key] and 'ON' or 'OFF'
-        status.TextColor3=C[key] and Color3.fromRGB(100,243,156)
-            or Color3.fromRGB(143,149,159)
+
+local mainNav,settingsNav
+local function navButton(y,name,mark)
+    local button=make('TextButton',{
+        Text='',BackgroundColor3=Color3.fromRGB(120,114,107),
+        BackgroundTransparency=1,AutoButtonColor=false,
+        BorderSizePixel=0,Position=UDim2.fromOffset(8,y),
+        Size=UDim2.fromOffset(51,63)
+    },rail)
+    make('UICorner',{CornerRadius=UDim.new(0,10)},button)
+    make('TextLabel',{
+        Text=mark,Font=Enum.Font.GothamBold,TextSize=19,
+        TextColor3=theme.text,BackgroundTransparency=1,
+        Position=UDim2.fromOffset(0,6),Size=UDim2.fromOffset(51,29)
+    },button)
+    make('TextLabel',{
+        Text=name,Font=Enum.Font.GothamMedium,TextSize=9,
+        TextColor3=theme.dim,BackgroundTransparency=1,
+        Position=UDim2.fromOffset(0,38),Size=UDim2.fromOffset(51,16)
+    },button)
+    return button
+end
+mainNav=navButton(68,'MAIN','I')
+settingsNav=navButton(137,'SET','II')
+local activePage='Main'
+local function showPage(which)
+    activePage=which
+    content.Visible=which=='Main'
+    extras.Visible=which=='Settings'
+    mainNav.BackgroundTransparency=which=='Main' and 0.55 or 1
+    settingsNav.BackgroundTransparency=which=='Settings' and 0.55 or 1
+    pageTitle.Text=which=='Main' and 'MAIN' or 'SETTINGS'
+end
+links[#links+1]=mainNav.MouseButton1Click:Connect(function() showPage('Main') end)
+links[#links+1]=settingsNav.MouseButton1Click:Connect(function() showPage('Settings') end)
+showPage('Main')
+
+local function glassCard(parent,x,y,w,h)
+    local card=make('TextButton',{
+        Text='',AutoButtonColor=false,
+        Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),
+        BorderSizePixel=0,BackgroundColor3=theme.raised,
+        BackgroundTransparency=0.24
+    },parent)
+    make('UICorner',{CornerRadius=UDim.new(0,13)},card)
+    make('UIStroke',{Color=theme.line,Transparency=0.82,Thickness=1},card)
+    make('UIGradient',{
+        Color=ColorSequence.new(
+            Color3.fromRGB(122,115,107),Color3.fromRGB(77,75,74)),
+        Rotation=90
+    },card)
+    return card
+end
+
+-- Alternadores deslizantes, sem texto ON / OFF.
+local function toggle(title,description,key,x,y,w,h,parent)
+    local card=glassCard(parent,x,y,w,h)
+    miniLabel(title,UDim2.fromOffset(16,16),UDim2.fromOffset(w-94,26),
+        card,14,theme.text)
+    local desc=make('TextLabel',{
+        Text=description,Font=Enum.Font.Gotham,TextSize=10,
+        TextColor3=theme.dim,BackgroundTransparency=1,
+        TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,
+        TextYAlignment=Enum.TextYAlignment.Top,
+        Position=UDim2.fromOffset(16,47),
+        Size=UDim2.fromOffset(w-32,h-54)
+    },card)
+    local track=make('Frame',{
+        Position=UDim2.fromOffset(w-65,17),Size=UDim2.fromOffset(46,24),
+        BorderSizePixel=0,BackgroundColor3=theme.inactive
+    },card)
+    make('UICorner',{CornerRadius=UDim.new(1,0)},track)
+    local knob=make('Frame',{
+        BackgroundColor3=Color3.fromRGB(250,250,249),
+        BorderSizePixel=0,Size=UDim2.fromOffset(18,18),
+        Position=UDim2.fromOffset(3,3)
+    },track)
+    make('UICorner',{CornerRadius=UDim.new(1,0)},knob)
+
+    local function refresh(animate)
+        local enabled=C[key]==true
+        local bg=enabled and theme.blue or theme.inactive
+        local pos=enabled and UDim2.fromOffset(25,3) or UDim2.fromOffset(3,3)
+        if animate then
+            T:Create(track,TweenInfo.new(0.19,Enum.EasingStyle.Quad,
+                Enum.EasingDirection.Out),{BackgroundColor3=bg}):Play()
+            T:Create(knob,TweenInfo.new(0.19,Enum.EasingStyle.Quad,
+                Enum.EasingDirection.Out),{Position=pos}):Play()
+        else
+            track.BackgroundColor3=bg
+            knob.Position=pos
+        end
     end
-    links[#links+1]=b.MouseButton1Click:Connect(function()
+    links[#links+1]=card.MouseButton1Click:Connect(function()
         C[key]=not C[key]
         if key=='FPSBoost' then fpsSetEnabled(C.FPSBoost) end
         if key=='Indicator' then
-            for _,indicator in pairs(markers) do updateIndicatorVisibility(indicator) end
+            for _,indicator in pairs(markers) do
+                updateIndicatorVisibility(indicator)
+            end
         end
         if key=='CameraServe' and not C.CameraServe then cancelServeCamera() end
         if key=='SpikeDirection' and not C[key] then
@@ -2479,8 +2603,6 @@ local function toggle(label,y,key,color,where)
         if key=='SmartDive' then
             if not C.SmartDive then cancelSmart(false) end
             if C.SmartDive then
-                
-                
                 stopSteering()
             else
                 aimTarget=nil
@@ -2489,65 +2611,45 @@ local function toggle(label,y,key,color,where)
             end
         end
         saveSettings()
-        refresh()
+        refresh(true)
         updateMarkers()
         if key=='SmartDive' then updateEIntercept() end
-        end)
-    refresh()
+    end)
+    refresh(false)
     return refresh
 end
 
+local gap=12
+local cardWidth=math.floor((563-gap)/2)
+refreshSmart=toggle('Smart Dive','Assistencia inteligente no mergulho',
+    'SmartDive',0,0,cardWidth,112,content)
+toggle('Optimizer','Otimizacao dos elementos visuais',
+    'FPSBoost',cardWidth+gap,0,cardWidth,112,content)
+toggle('Quick Look','Olha para o sacador ao comecar a partida',
+    'CameraServe',0,124,cardWidth,112,content)
+toggle('Indicator','Mostra onde a bola vai cair',
+    'Indicator',cardWidth+gap,124,cardWidth,112,content)
 
-refreshSmart=toggle('Smart Dive',0,'SmartDive',Color3.fromRGB(255,190,90))
-toggle('Optimizer',47,'FPSBoost',Color3.fromRGB(95,220,183))
-toggle('Quick Look',94,'CameraServe',Color3.fromRGB(105,183,255))
-toggle('Indicator',141,'Indicator',Color3.fromRGB(100,222,155))
+toggle('Fake Shift','Direcao do corte durante o salto',
+    'SpikeDirection',0,0,563,81,extras)
 
-
-
-
-local stats=make('TextLabel',{Text='',Font=Enum.Font.Gotham,TextSize=10,
-    TextColor3=Color3.fromRGB(160,169,181),BackgroundTransparency=1,
-    TextXAlignment=Enum.TextXAlignment.Left,
-    Position=UDim2.fromOffset(2,198),Size=UDim2.new(1,-4,0,18)},content)
-local lastStats=0
-local fpsEstimate=60
-links[#links+1]=Run.RenderStepped:Connect(function(dt)
-    if dt>0.001 and dt<1 then
-        fpsEstimate=fpsEstimate*0.91+(1/dt)*0.09
-    end
-end)
-links[#links+1]=Run.Heartbeat:Connect(function()
-    if stopped or os.clock()-lastStats<0.6 then return end
-    lastStats=os.clock()
-    local mode=detectMode()
-    local label=(mode=='Main' and 'PARTIDA') or (mode=='Practice' and 'PRACTICE') or 'LOBBY'
-    stats.Text=string.format('%s • %.0f FPS • %.0f ms',label,fpsEstimate,ping*1000)
-    dot.BackgroundColor3=(mode=='Main' and C.MainColor)
-        or (mode=='Practice' and C.PracticeColor)
-        or Color3.fromRGB(130,135,145)
-end)
-
-
-
-
-
-toggle('Fake Shift',4,'SpikeDirection',Color3.fromRGB(255,170,105),extras)
-local keyLabel=make('TextLabel',{
-    Text='TECLA DO CORTE',Font=Enum.Font.GothamMedium,TextSize=10,
-    TextColor3=Color3.fromRGB(173,183,196),BackgroundTransparency=1,
-    TextXAlignment=Enum.TextXAlignment.Left,
-    Position=UDim2.fromOffset(2,58),Size=UDim2.fromOffset(125,28)
-},extras)
+local keyCard=glassCard(extras,0,94,563,74)
+miniLabel('FAKE SHIFT KEY',
+    UDim2.fromOffset(16,10),UDim2.fromOffset(340,22),
+    keyCard,12,theme.text)
+miniLabel('Escolha a tecla para ativar a funcao',
+    UDim2.fromOffset(16,37),UDim2.fromOffset(345,18),
+    keyCard,10,theme.dim)
 local keyButton=make('TextButton',{
-    Text='',Font=Enum.Font.GothamBold,TextSize=11,
-    TextColor3=Color3.fromRGB(245,247,252),
-    BackgroundColor3=Color3.fromRGB(49,54,64),BorderSizePixel=0,
-    Position=UDim2.new(1,-112,0,56),Size=UDim2.fromOffset(110,31)
-},extras)
-make('UICorner',{CornerRadius=UDim.new(0,7)},keyButton)
+    Text='',Font=Enum.Font.GothamBold,TextSize=12,
+    TextColor3=theme.text,BackgroundColor3=Color3.fromRGB(112,107,103),
+    BackgroundTransparency=0.2,AutoButtonColor=false,BorderSizePixel=0,
+    Position=UDim2.fromOffset(426,19),Size=UDim2.fromOffset(119,35)
+},keyCard)
+make('UICorner',{CornerRadius=UDim.new(0,9)},keyButton)
+make('UIStroke',{Color=theme.line,Transparency=0.75,Thickness=1},keyButton)
 spikeKeyRefresh=function()
-    keyButton.Text=spikeCaptureKey and 'APERTE TECLA' or ('TECLA: '..C.SpikeKey)
+    keyButton.Text=spikeCaptureKey and 'PRESS KEY' or ('KEY: '..C.SpikeKey)
 end
 spikeKeyRefresh()
 links[#links+1]=keyButton.MouseButton1Click:Connect(function()
@@ -2556,133 +2658,156 @@ links[#links+1]=keyButton.MouseButton1Click:Connect(function()
     clearSpikeLock()
     spikeKeyRefresh()
 end)
-make('TextLabel',{
-    Text='Segure a tecla no ar e clique: o corpo fica apontado para o lado visto antes do clique. Camera livre.',
-    Font=Enum.Font.Gotham,TextSize=10,
-    TextColor3=Color3.fromRGB(156,166,178),BackgroundTransparency=1,
-    TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,
-    TextWrapped=true,Position=UDim2.fromOffset(2,99),
-    Size=UDim2.new(1,-6,0,51)
+local fakeShiftInfo=make('TextLabel',{
+    Text='No ar, segure a tecla e clique para direcionar o corpo sem prender a camera.',
+    Font=Enum.Font.Gotham,TextSize=11,TextColor3=theme.dim,
+    TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Left,
+    TextYAlignment=Enum.TextYAlignment.Top,
+    BackgroundTransparency=1,
+    Position=UDim2.fromOffset(12,181),
+    Size=UDim2.fromOffset(535,46)
 },extras)
 
-
+local foot=make('Frame',{
+    Position=UDim2.fromOffset(92,355),
+    Size=UDim2.fromOffset(563,35),
+    BackgroundColor3=Color3.fromRGB(100,95,90),
+    BackgroundTransparency=0.7,BorderSizePixel=0
+},panel)
+make('UICorner',{CornerRadius=UDim.new(0,9)},foot)
+local statusDot=make('Frame',{
+    Position=UDim2.fromOffset(12,13),Size=UDim2.fromOffset(9,9),
+    BackgroundColor3=theme.faint,BorderSizePixel=0
+},foot)
+make('UICorner',{CornerRadius=UDim.new(1,0)},statusDot)
+local stats=make('TextLabel',{
+    Text='LOBBY',Font=Enum.Font.GothamMedium,TextSize=10,
+    TextColor3=theme.dim,BackgroundTransparency=1,
+    TextXAlignment=Enum.TextXAlignment.Left,
+    Position=UDim2.fromOffset(30,2),Size=UDim2.fromOffset(350,31)
+},foot)
 local saveStatus=make('TextLabel',{
-    Text='',Font=Enum.Font.Gotham,TextSize=11,
-    TextColor3=Color3.fromRGB(165,175,186),
-    BackgroundTransparency=1,TextXAlignment=Enum.TextXAlignment.Left,
-    Position=UDim2.fromOffset(2,162),Size=UDim2.new(1,-8,0,46),
-    TextWrapped=true
-},extras)
+    Text='',Font=Enum.Font.Gotham,TextSize=10,
+    TextColor3=theme.faint,BackgroundTransparency=1,
+    TextXAlignment=Enum.TextXAlignment.Right,
+    Position=UDim2.fromOffset(378,2),Size=UDim2.fromOffset(174,31)
+},foot)
 local function refreshSaveStatus()
-    if saveLocation=='arquivo' then
-        saveStatus.Text='Configurações salvas automaticamente neste PC.'
-    else
-        saveStatus.Text='Configurações salvas na sessão. Arquivo indisponível neste executor.'
-    end
+    saveStatus.Text=saveLocation=='arquivo' and 'SAVED' or 'SESSION ONLY'
 end
-make('TextLabel',{Text='FPS TURBO: esconde decorações do lobby e pequenos detritos do mar. Preserva todas as quadras, suas texturas de cor, jogadores e colisões.',
-    Font=Enum.Font.Gotham,TextSize=10,
-    TextColor3=Color3.fromRGB(157,165,176),BackgroundTransparency=1,
-    TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,
-    TextWrapped=true,Position=UDim2.fromOffset(2,219),
-    Size=UDim2.new(1,-4,0,65)},extras)
-
 saveSettings()
 refreshSaveStatus()
 fpsSetEnabled(C.FPSBoost)
 
+local lastStats=0
+local fpsEstimate=60
+links[#links+1]=Run.RenderStepped:Connect(function(dt)
+    if dt>0.001 and dt<1 then
+        fpsEstimate=fpsEstimate*0.91+(1/dt)*0.09
+    end
+end)
+links[#links+1]=Run.Heartbeat:Connect(function()
+    if stopped then return end
+    if os.clock()-lastStats>0.6 then
+        lastStats=os.clock()
+        local mode=detectMode()
+        local label=(mode=='Main' and 'PUBLIC MATCH')
+            or (mode=='Practice' and 'PRACTICE') or 'LOBBY'
+        stats.Text=string.format('%s   /   %.0f FPS   /   %.0f ms',
+            label,fpsEstimate,ping*1000)
+        statusDot.BackgroundColor3=
+            (mode=='Main' and C.MainColor)
+            or (mode=='Practice' and C.PracticeColor) or theme.faint
+    end
+end)
 
-local dragging=nil
-local opened=false
-local placed=false
+local opened=true
 local seq=0
 local tweens={}
 local function cancelTweens()
-    for _,tw in ipairs(tweens) do tw:Cancel() end
+    for _,tw in ipairs(tweens) do pcall(function() tw:Cancel() end) end
     table.clear(tweens)
-end
-local function placeOnce()
-    if placed then return end
-    placed=true
-    if uiPrefs.PanelX and uiPrefs.PanelY then return end
-    local p=icon.AbsolutePosition
-    local x=p.X>width+24 and p.X-width-12 or p.X+iconSize+12
-    local safe=bound(Vector2.new(x,p.Y),Vector2.new(width,height))
-    panel.Position=UDim2.fromOffset(safe.X,safe.Y)
 end
 local function openMenu(value)
     if stopped or value==opened then return end
-    placeOnce()
     opened=value
     seq=seq+1
     local generation=seq
     cancelTweens()
-    if value then panel.Visible=true end
-    local info=TweenInfo.new(value and 0.2 or 0.16,Enum.EasingStyle.Quad,
+    if value then
+        panel.Visible=true
+        overlay.Visible=true
+        updateScale()
+    end
+    local ease=TweenInfo.new(value and 0.23 or 0.16,
+        Enum.EasingStyle.Quad,
         value and Enum.EasingDirection.Out or Enum.EasingDirection.In)
-    local a=T:Create(panel,info,{GroupTransparency=value and 0 or 1})
-    local b=T:Create(scale,info,{Scale=value and 1 or 0.91})
-    tweens={a,b}
-    a:Play()
-    b:Play()
-    a.Completed:Connect(function()
-        if not stopped and generation==seq and not opened then panel.Visible=false end
+    local fade=T:Create(panel,ease,{GroupTransparency=value and 0 or 1})
+    local zoom=T:Create(scale,ease,{Scale=
+        (value and scale.Scale or scale.Scale*0.96)})
+    local bg=T:Create(overlay,ease,{BackgroundTransparency=value and 0.36 or 1})
+    tweens={fade,zoom,bg}
+    fade:Play()
+    zoom:Play()
+    bg:Play()
+    links[#links+1]=fade.Completed:Connect(function()
+        if not stopped and generation==seq and not opened then
+            panel.Visible=false
+            overlay.Visible=false
+        end
     end)
 end
-local function beginDrag(input,kind,object,update)
-    if dragging then return end
-    local t=input.UserInputType
-    if t~=Enum.UserInputType.MouseButton1 and t~=Enum.UserInputType.Touch then return end
-    dragging={Input=input,Kind=kind,Object=object,
-        Start=input.Position,Origin=object and object.AbsolutePosition or Vector2.zero,
-        Moved=false,Update=update}
+
+-- F9 e utilizado como tecla unica para abrir e fechar o menu.
+local menuAction='VolleyBombLanding_MenuF9'
+local lastMenuInput=-math.huge
+local function toggleMenuFromKey()
+    if stopped or U:GetFocusedTextBox() then return end
+    local now=os.clock()
+    if now-lastMenuInput<0.14 then return end
+    lastMenuInput=now
+    openMenu(not opened)
 end
-links[#links+1]=icon.InputBegan:Connect(function(input)
-    beginDrag(input,'icon',icon)
+local menuBindOK=pcall(function()
+    CAS:BindActionAtPriority(menuAction,function(_,inputState)
+        if inputState==Enum.UserInputState.Begin then toggleMenuFromKey() end
+        return Enum.ContextActionResult.Sink
+    end,false,10000,Enum.KeyCode.F9)
 end)
+links[#links+1]=U.InputBegan:Connect(function(input)
+    if input.KeyCode==Enum.KeyCode.F9 then toggleMenuFromKey() end
+end)
+
+-- Arrastar o painel pelo cabecalho, mantendo dentro da tela.
+local dragging=nil
 links[#links+1]=header.InputBegan:Connect(function(input)
-    if input.Position.X>panel.AbsolutePosition.X+panel.AbsoluteSize.X-72 then return end
-    beginDrag(input,'panel',panel)
+    if input.UserInputType~=Enum.UserInputType.MouseButton1
+        and input.UserInputType~=Enum.UserInputType.Touch then return end
+    dragging={Input=input,Origin=input.Position,
+        Position=panel.Position}
 end)
 links[#links+1]=U.InputChanged:Connect(function(input)
-    local d=dragging
-    if not d then return end
-    if d.Input.UserInputType==Enum.UserInputType.Touch then
-        if input~=d.Input then return end
+    if not dragging or not opened then return end
+    if dragging.Input.UserInputType==Enum.UserInputType.Touch then
+        if input~=dragging.Input then return end
     elseif input.UserInputType~=Enum.UserInputType.MouseMovement then
         return
     end
-    local delta=input.Position-d.Start
-    if delta.Magnitude>7 then d.Moved=true end
-    if not d.Moved then return end
-    local size=d.Kind=='icon' and Vector2.new(iconSize,iconSize)
-        or Vector2.new(width,height)
-    local safe=bound(d.Origin+Vector2.new(delta.X,delta.Y),size)
-    d.Object.Position=UDim2.fromOffset(safe.X,safe.Y)
+    local delta=input.Position-dragging.Origin
+    local camera=W.CurrentCamera
+    local vp=camera and camera.ViewportSize or Vector2.new(1280,720)
+    local xLimit=math.max(0,vp.X*0.5-width*scale.Scale*0.5-9)
+    local yLimit=math.max(0,vp.Y*0.5-height*scale.Scale*0.5-9)
+    panel.Position=UDim2.new(0.5,math.clamp(
+        dragging.Position.X.Offset+delta.X,-xLimit,xLimit),
+        0.5,math.clamp(dragging.Position.Y.Offset+delta.Y,-yLimit,yLimit))
 end)
 links[#links+1]=U.InputEnded:Connect(function(input)
-    local d=dragging
-    if not d then return end
-    local released=(input==d.Input) or
-        (d.Input.UserInputType==Enum.UserInputType.MouseButton1
-            and input.UserInputType==Enum.UserInputType.MouseButton1)
-    if not released then return end
-    dragging=nil
-    if d.Moved and (d.Kind=='icon' or d.Kind=='panel') then
-        local px=d.Object.Position.X.Offset
-        local py=d.Object.Position.Y.Offset
-        if d.Kind=='icon' then
-            uiPrefs.IconX,uiPrefs.IconY=px,py
-        else
-            uiPrefs.PanelX,uiPrefs.PanelY=px,py
-        end
-        saveSettings()
-        refreshSaveStatus()
+    if dragging and (input==dragging.Input or
+        (dragging.Input.UserInputType==Enum.UserInputType.MouseButton1
+        and input.UserInputType==Enum.UserInputType.MouseButton1)) then
+        dragging=nil
     end
-    if d.Kind=='icon' and not d.Moved then openMenu(not opened) end
-end)
-links[#links+1]=collapse.MouseButton1Click:Connect(function()
-    openMenu(false)
 end)
 
 local function stop(reason)
@@ -2713,6 +2838,7 @@ local function stop(reason)
     FPS.Enabled=false
     fpsRestore()
     cancelTweens()
+    if menuBindOK then CAS:UnbindAction(menuAction) end
     restoreCamera()
     Run:UnbindFromRenderStep(renderKey)
     if animationLink then animationLink:Disconnect() end
@@ -2726,8 +2852,8 @@ local function stop(reason)
     end
 end
 links[#links+1]=close.MouseButton1Click:Connect(stop)
-env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.14'}
-print('[VolleyBomb v9.14] Rebote 0.60 e normal do BallState; Dive v8.0 preservado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
+env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.15'}
+print('[VolleyBomb v9.15] Rebote 0.60 e normal do BallState; Dive v8.0 preservado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
 ]=]
 
 local RUNNER = [==[
@@ -2735,11 +2861,11 @@ return function(expectedUniverse, core, runner)
     if not game:IsLoaded() then game.Loaded:Wait() end
     local universe = game.GameId
     if type(universe) ~= 'number' or universe == 0 then
-        warn('[VolleyBomb v9.14] Nao foi possivel reconhecer o universo do jogo.')
+        warn('[VolleyBomb v9.15] Nao foi possivel reconhecer o universo do jogo.')
         return
     end
     if expectedUniverse and expectedUniverse ~= universe then
-        warn('[VolleyBomb v9.14] Outro jogo detectado. Autoexecucao ignorada.')
+        warn('[VolleyBomb v9.15] Outro jogo detectado. Autoexecucao ignorada.')
         return
     end
     local replicated = game:GetService('ReplicatedStorage')
@@ -2750,7 +2876,7 @@ return function(expectedUniverse, core, runner)
     local ballState = net and (net:FindFirstChild('RE/BallState')
         or net:WaitForChild('RE/BallState', 25))
     if not ballState or not ballState:IsA('RemoteEvent') then
-        warn('[VolleyBomb v9.14] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
+        warn('[VolleyBomb v9.15] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
         return
     end
 
@@ -2801,26 +2927,26 @@ return function(expectedUniverse, core, runner)
     
     local compiled,err=loadstring(core)
     if not compiled then
-        warn('[VolleyBomb v9.14] Erro ao ler codigo principal: '..tostring(err))
+        warn('[VolleyBomb v9.15] Erro ao ler codigo principal: '..tostring(err))
         return
     end
     local ok,runtimeErr=pcall(compiled)
     if not ok then
-        warn('[VolleyBomb v9.14] Erro na execucao: '..tostring(runtimeErr))
+        warn('[VolleyBomb v9.15] Erro na execucao: '..tostring(runtimeErr))
         return
     end
 
     local current=environ.VolleyBombLanding
-    if type(current)~='table' or current.Version~='9.14' then return end
+    if type(current)~='table' or current.Version~='9.15' then return end
 
     
     
     current.CancelTeleport=function()
         local success,message=clearQueuedTeleports()
         if success then
-            print('[VolleyBomb v9.14] X: Auto-inicio desligado e fila de teleportes limpa.')
+            print('[VolleyBomb v9.15] X: Auto-inicio desligado e fila de teleportes limpa.')
         else
-            warn('[VolleyBomb v9.14] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
+            warn('[VolleyBomb v9.15] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
         end
         return success
     end
@@ -2829,12 +2955,12 @@ return function(expectedUniverse, core, runner)
     
     local cleared,why=clearQueuedTeleports()
     if not cleared then
-        warn('[VolleyBomb v9.14] Nao deu para limpar copias antigas: '..tostring(why))
+        warn('[VolleyBomb v9.15] Nao deu para limpar copias antigas: '..tostring(why))
     end
 
     local queue=getTeleportQueue()
     if not queue then
-        warn('[VolleyBomb v9.14] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
+        warn('[VolleyBomb v9.15] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
         return
     end
 
@@ -2844,28 +2970,28 @@ local core = %q
 local runner = %q
 local compiler, errorMessage = loadstring(runner)
 if not compiler then
-    warn('[VolleyBomb v9.14] Erro no auto-inicio: '..tostring(errorMessage))
+    warn('[VolleyBomb v9.15] Erro no auto-inicio: '..tostring(errorMessage))
 else
     local success, launch = pcall(compiler)
     if success and type(launch)=='function' then
         launch(expectedUniverse, core, runner)
     else
-        warn('[VolleyBomb v9.14] Auto-inicio indisponivel: '..tostring(launch))
+        warn('[VolleyBomb v9.15] Auto-inicio indisponivel: '..tostring(launch))
     end
 end
 ]=], universe, core, runner)
     local registered,queueErr=pcall(queue,queuedCode)
     if registered then
         environ.VolleyBombLandingTeleportQueued=
-            tostring(universe)..'/'..tostring(game.JobId)..'/v9.14'
-        print('[VolleyBomb v9.14] Auto-inicio preparado. X cancela o proximo servidor.')
+            tostring(universe)..'/'..tostring(game.JobId)..'/v9.15'
+        print('[VolleyBomb v9.15] Auto-inicio preparado. X cancela o proximo servidor.')
     else
-        warn('[VolleyBomb v9.14] Falha ao preparar proximo servidor: '..tostring(queueErr))
+        warn('[VolleyBomb v9.15] Falha ao preparar proximo servidor: '..tostring(queueErr))
     end
 end
 ]==]
 
 local compiled,err=loadstring(RUNNER)
-if not compiled then error('[VolleyBomb v9.14] Erro de inicializacao: '..tostring(err)) end
+if not compiled then error('[VolleyBomb v9.15] Erro de inicializacao: '..tostring(err)) end
 local start=compiled()
 start(nil,CORE,RUNNER)
