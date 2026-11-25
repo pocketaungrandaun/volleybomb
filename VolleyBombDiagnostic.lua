@@ -79,6 +79,7 @@ local function number(v)
     return math.floor(v*1000+0.5)/1000
 end
 local function vec(v)
+    if typeof(v)=="Vector2" then return {number(v.X),number(v.Y)} end
     return {number(v.X),number(v.Y),number(v.Z)}
 end
 local function clean(value,depth,budget,seen)
@@ -343,7 +344,9 @@ end
 
 local function scanNetworking()
     local packages=ReplicatedStorage:FindFirstChild("Packages")
-    local net=packages and packages:FindFirstChild("Net")
+        or ReplicatedStorage:WaitForChild("Packages",12)
+    local net=packages and (packages:FindFirstChild("Net")
+        or packages:WaitForChild("Net",12))
     if not net then
         result.notes[#result.notes+1]={stage="network",error="Packages/Net not found"}
         return
