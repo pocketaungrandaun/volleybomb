@@ -47,7 +47,7 @@ local hasV65Preferences=false
 
 local function loadSettings(data)
     if type(data)~='table' then return end
-    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' or data.Version=='9.17' or data.Version=='9.18' or data.Version=='9.19' or data.Version=='9.20' or data.Version=='9.21' or data.Version=='9.22' then hasV65Preferences=true end
+    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' or data.Version=='9.17' or data.Version=='9.18' or data.Version=='9.19' or data.Version=='9.20' or data.Version=='9.21' or data.Version=='9.22' or data.Version=='9.23' then hasV65Preferences=true end
     for _,key in ipairs(savedKeys) do
         local value=data[key]
         if key=='DiveLead' then
@@ -98,7 +98,7 @@ C.Practice=true
 C.SteerDive=true
 
 local function saveSettings()
-    local data={Version='9.22',UI={}}
+    local data={Version='9.23',UI={}}
     for _,key in ipairs(savedKeys) do data[key]=C[key] end
     for _,key in ipairs({'IconX','IconY','PanelX','PanelY'}) do
         data.UI[key]=uiPrefs[key]
@@ -1934,207 +1934,215 @@ end
 
 
 
+
+-- Smart Dive v2: correcao REATIVA do dive nativo, sem auto mergulho.
+-- E continua indo ao jogo; nenhuma tecla ou RemoteEvent faz o dive pela pessoa.
+-- Ao detectar o impulso real, ajusta a direcao para o destino confiavel da bola.
 local function samplePing()
     if os.clock()-lastPing<1 then return end
     lastPing=os.clock()
     local ok,p=pcall(function() return me:GetNetworkPing() end)
     if ok and type(p)=='number' and p>=0 and p<2 then ping=p end
 end
-local function learnDive()
-    if not sample or os.clock()-sample.Start<0.33 then return end
-    local root=character()
-    if root then
-        local delta=root.Position-sample.Position
-        local speed=delta:Dot(sample.Direction)/(os.clock()-sample.Start)
-        if speed>10 and speed<120 then
-            measuredSpeed=measuredSpeed and measuredSpeed*0.6+speed*0.4 or speed
-        end
-    end
-    sample=nil
-end
-local function diveSpeed()
-    return math.clamp(measuredSpeed or C.DiveSpeed,15,100)
-end
 
-
-
-
-
-
-
-
-
-
-
-
-local function smartCandidate()
-    local root=character()
-    if not root then return nil end
-    local nearest,chosen,chosenArena=math.huge,nil,nil
-    local now=os.clock()
-    local mode=detectMode(true)
-    for _,arena in ipairs({'Main','Practice'}) do
-        local m=markers[arena]
-        if arena==mode and m and m.LastPoint and
-            (m.Visible or (m.LastVisibleAt and now-m.LastVisibleAt<=0.12)) then
-            local delta=m.LastPoint-root.Position
-            local distance=Vector3.new(delta.X,0,delta.Z).Magnitude
-            if distance<nearest then
-                nearest,chosen,chosenArena=distance,m.LastPoint,arena
-            end
-        end
-    end
-    return chosen,chosenArena,nearest
-end
+local smartTriggerAt=-math.huge
+local smartConfirmed=false
+local smartAnimationSeen=false
+local smartArena=nil
+local smartBallTime=nil
+local smartLastTarget=nil
+local smartLastFrame=0
+local smartTimeout=0
+local smartInputDebounce=-math.huge
+local smartBurstSpeed=0
 
 local function stopSteering()
     steerActive=false
     steerStarted=false
     steerTarget=nil
     steerDirection=nil
-    steerStartPosition=nil
-    lastSteerDistance=nil
-    steerPathLength=0
-    steerAnimationSeen=false
+    smartConfirmed=false
+    smartAnimationSeen=false
+    smartArena=nil
+    smartBallTime=nil
+    smartLastTarget=nil
+    smartBurstSpeed=0
+    restoreRotation()
 end
 
+local function safeDiveTarget(root)
+    local arena=detectMode(true)
+    if arena~='Main' and arena~='Practice' then return nil end
+    local s=correctedState and correctedState(arena)
+    if not s or s.Surface~='floor' or not s.Reliable
+        or s.MotionUncertain or s.Live
+        or typeof(s.Point)~='Vector3'
+        or typeof(s.Normal)~='Vector3' or s.Normal.Y<0.88
+        or type(s.EndTime)~='number' then return nil end
 
+    local timeLeft=s.EndTime-W:GetServerTimeNow()
+    if timeLeft < -0.035 or timeLeft >1.05 then return nil end
 
-local function aimAndDiveNatively()
-    if stopped or not C.SmartDive then return end
+    local direction,dist=horizontal(root.Position,s.Point)
+    if not direction or dist>43 then return nil end
+
+    -- Nao atravessa para o outro time; em arenas sem Zones, ignora
+    -- pontos muito distantes por nao ser possivel validar o proprio lado.
+    if type(s.Zones)=='table' and #s.Zones>0 then
+        if not ownSide(s,root) then return nil end
+    elseif dist>25 then
+        return nil
+    end
+    return s,arena,direction,dist,timeLeft
+end
+
+local function beginSmartDive(origin)
+    if stopped or not C.SmartDive or spikeCaptureKey
+        or U:GetFocusedTextBox() then return end
     local now=os.clock()
     lastPhysicalPress=now
-    stopSteering()
-    local target,arena,dist=smartCandidate()
+    if now-smartInputDebounce<0.12 then return end
+    smartInputDebounce=now
+    if steerActive then stopSteering() end
+
     local root,hum=character()
-    if not root or not hum then return end
-    restoreRotation()
-    aimTarget=nil
-    aimUntil=0
+    if not root or not hum or hum.Health<=0 or root.Anchored then return end
+    local target,arena= safeDiveTarget(root)
+    if not target then return end
 
-    
-    if not target then
-        lastDecision='E original: nenhum indicador naquele instante'
-        return
-    end
-    local direction=horizontal(root.Position,target)
-    if not direction then
-        lastDecision='E original: ja esta no indicador'
-        return
-    end
-
-    
-    steerTarget=Vector3.new(target.X,target.Y,target.Z)
-    steerDirection=direction
-    steerStartPosition=root.Position
-    steerPathLength=dist
-    steerAnimationSeen=false
-    steerArmedAt=now
-    steerUntil=now+math.clamp(dist/108+0.70,0.85,C.ChaseWindow)
-    steerStarted=false
+    -- O primeiro alvo vem do BallState e pode mudar durante o mergulho.
+    -- Aqui nao altera a direcao original de E; a correcao so comeca
+    -- quando a animacao/impulso do dive nativo for observado.
     steerActive=true
+    steerStarted=false
+    steerTarget=target.Point
+    steerStartPosition=root.Position
+    steerArmedAt=now
+    steerUntil=now+0.69
+    smartTimeout=now+0.36
+    smartTriggerAt=now
+    smartAnimationSeen=false
+    smartConfirmed=false
+    smartArena=arena
+    smartBallTime=target.Raw and target.Raw.Time or target.Time
+    smartLastTarget=target.Point
+    smartBurstSpeed=0
+    lastDecision='Dive nativo solicitado; aguardando movimento real'
     clearSpikeLock()
-    lastDecision=string.format('E -> indicador %s salvo, %.1f studs',arena,dist)
-    print(string.format('[VolleyBomb v8.0 Dive] E NATIVO | alvo=%s | distancia=%.1f | ponto=(%.1f,%.1f,%.1f) | shiftlock=%s',
-        arena,dist,target.X,target.Y,target.Z,tostring(shiftLockAtivo())))
 end
 
-
-
-
-
-
-local wallCast=params()
-local wallCastChar=me.Character
-local lastWallFilter=0
 local function obstacleAhead(root,dir)
-    if me.Character~=wallCastChar or os.clock()-lastWallFilter>2 then
-        wallCastChar=me.Character
-        wallCast=params()
-        lastWallFilter=os.clock()
-    end
-    
-    
+    local filters=params()
     local ok,hit=pcall(function()
-        return W:Raycast(root.Position+Vector3.new(0,0.75,0),dir*3.2,wallCast)
+        return W:Raycast(
+            root.Position+Vector3.new(0,0.8,0),
+            dir*3.1,filters)
     end)
-    return ok and hit and math.abs(hit.Normal.Y)<0.55 and hit.Distance<=2.8
+    return ok and hit
+        and math.abs(hit.Normal.Y)<0.6 and hit.Distance<=2.8
 end
+
 local function steerPhysics()
-    if stopped or not C.SmartDive or not steerActive or not steerDirection then return end
+    if stopped or not C.SmartDive or not steerActive then return end
     local root,hum=character()
-    if not root or not hum or root.Anchored
-        or hum:GetState()==Enum.HumanoidStateType.Dead then
+    if not root or not hum or hum.Health<=0 or root.Anchored then
         stopSteering()
         return
     end
     local now=os.clock()
     if now>steerUntil then
-        
-        
-        lastDecision=steerStarted and 'Dive finalizado: limite de tempo' or 'E sem dive detectado'
         stopSteering()
         return
     end
-    local velocity=root.AssemblyLinearVelocity
-    local flat=Vector3.new(velocity.X,0,velocity.Z).Magnitude
 
-    
-    if not steerStarted then
-        if now-steerArmedAt>0.34 then
-            lastDecision='E original nao iniciou dive (possivel cooldown)'
+    local v=root.AssemblyLinearVelocity
+    local planar=Vector3.new(v.X,0,v.Z)
+    local speed=planar.Magnitude
+    if not smartConfirmed then
+        if now>smartTimeout then
+            -- E nao iniciou um dive (ex.: cooldown); nao movimenta ninguem.
             stopSteering()
             return
         end
-        if (flat>=52 and flat<=175) or (steerAnimationSeen and flat>=16) then
+        if smartAnimationSeen or
+            (speed>=53 and speed<=160 and now-smartTriggerAt<=0.32) then
+            smartConfirmed=true
             steerStarted=true
             steerDetectedAt=now
-            steerStartSource='impulso'
-            lastDecision='Dive iniciado: linha reta para indicador salvo'
-            print('[VolleyBomb v8.0 Dive] Movimento real detectado; direcao congelada')
+            smartBurstSpeed=math.clamp(speed,48,98)
+            steerUntil=math.min(now+0.53,steerArmedAt+0.78)
         else
             return
         end
     end
 
-    
-    
-    local offset=root.Position-steerStartPosition
-    local delta=Vector3.new(offset.X,0,offset.Z)
-    local progress=delta:Dot(steerDirection)
-    local left=steerPathLength-progress
-
-    if left<=1.9 then
-        root.AssemblyLinearVelocity=Vector3.new(0,velocity.Y,0)
-        lastDecision='Indicador salvo alcancado na linha original'
+    -- So modifica durante o impulso real do dive, nao apos cair ou
+    -- quando o jogo ja devolveu o controle normal ao personagem.
+    if now>steerUntil or hum.FloorMaterial~=Enum.Material.Air
+        and now-steerDetectedAt>0.17 and speed<23 then
         stopSteering()
         return
     end
 
-    
-    
-    local sideways=(delta-steerDirection*progress).Magnitude
-    if sideways>7 then
-        lastDecision='Trajetoria desviada: sem perseguir indicador'
+    local s,arena,direction,dist,remaining=safeDiveTarget(root)
+    if not s or arena~=smartArena then
         stopSteering()
         return
     end
-    if obstacleAhead(root,steerDirection) then
-        root.AssemblyLinearVelocity=Vector3.new(0,velocity.Y,0)
-        lastDecision='Parede na linha do dive: sem atravessar ou desviar'
+    local newPoint=s.Point
+    if smartLastTarget and (newPoint-smartLastTarget).Magnitude>16 then
+        -- Um novo hit alterou o destino por completo: nao persegue uma bola
+        -- pelo mapa ou acelera um personagem em trajetoria impossivel.
+        stopSteering()
+        return
+    end
+    smartLastTarget=newPoint
+    steerTarget=newPoint
+
+    if dist<=2.6 then
+        -- Perto da bola, deixa o impulso nativo completar a jogada.
+        stopSteering()
+        return
+    end
+    if remaining<0.01 then
+        stopSteering()
+        return
+    end
+    if obstacleAhead(root,direction) then
         stopSteering()
         return
     end
 
-    
-    
-    
-    local speed=math.clamp((left-1.2)*13,26,118)
-    local corrected=steerDirection*speed
-    root.AssemblyLinearVelocity=Vector3.new(corrected.X,velocity.Y,corrected.Z)
+    -- Corrige apenas quando a direcao atual faria o dive passar longe.
+    -- Em trajetoria correta, nao interfere na fisica original.
+    local forward=speed>1 and planar.Unit:Dot(direction) or -1
+    local sideways=speed>1 and
+        (planar-planar:Dot(direction)*direction).Magnitude or speed
+    local miss=(forward<0.93 or sideways>7 or speed<25)
+    if not miss then
+        return
+    end
+
+    -- Mantem a velocidade horizontal dentro da faixa de um dive real.
+    -- Sem teleporte, sem mudar camera, sem alterar gravidade.
+    local wantedSpeed=math.clamp(math.max(speed,smartBurstSpeed,49),49,98)
+    if remaining<0.12 then
+        wantedSpeed=math.min(wantedSpeed,math.max(36,dist/math.max(remaining,0.06)))
+    end
+    local desired=direction*wantedSpeed
+    -- Ajuste progressivo em vez de substituicao violenta de direcao.
+    local dt=math.clamp(now-(smartLastFrame>0 and smartLastFrame or now-1/60),
+        1/120,1/25)
+    smartLastFrame=now
+    local fraction=math.clamp(dt*19,0.17,0.76)
+    local corrected=planar:Lerp(desired,fraction)
+    root.AssemblyLinearVelocity=Vector3.new(corrected.X,v.Y,corrected.Z)
+    if forward<0.70 then
+        -- Ajusta o corpo, nao a camera do jogador.
+        keepRotation(hum)
+        root.CFrame=CFrame.lookAt(root.Position,root.Position+direction)
+    end
 end
-
-
 
 local physicsOK,physicsConn=pcall(function()
     return Run.PostSimulation:Connect(steerPhysics)
@@ -2145,142 +2153,40 @@ else
     links[#links+1]=Run.Heartbeat:Connect(steerPhysics)
 end
 
+-- O dive continua 100% nativo. Capturar E nao bloqueia o jogo.
+local function onSmartDive(_,inputState)
+    if stopped or not C.SmartDive then return Enum.ContextActionResult.Pass end
+    if inputState==Enum.UserInputState.Begin then
+        beginSmartDive('E')
+    end
+    return Enum.ContextActionResult.Pass
+end
 
-
+local function updateEIntercept()
+    local bind=not stopped and C.SmartDive
+    if bind and not inputBound then
+        local ok,err=pcall(function()
+            CAS:BindActionAtPriority(actionKey,onSmartDive,false,
+                10000,Enum.KeyCode.E)
+        end)
+        inputBound=ok
+        if not ok then
+            warn('[VolleyBomb] Nao foi possivel monitorar E: '..tostring(err))
+        end
+    elseif not bind and inputBound then
+        CAS:UnbindAction(actionKey)
+        inputBound=false
+        stopSteering()
+    end
+end
 links[#links+1]=U.InputBegan:Connect(function(input)
-    if stopped or input.KeyCode~=Enum.KeyCode.E or not C.SmartDive
-        or inputBound or U:GetFocusedTextBox()~=nil then return end
-    aimAndDiveNatively()
+    if stopped or not C.SmartDive or inputBound
+        or input.KeyCode~=Enum.KeyCode.E then return end
+    beginSmartDive('E')
 end)
 
-
-
-local function wallCandidate()
-    local mode=detectMode()
-    local root,hum=character()
-    if not root or hum.FloorMaterial==Enum.Material.Air then return nil end
-    local now=W:GetServerTimeNow()
-    local result,best=nil,math.huge
-    for arena in pairs(markers) do
-        if arena==mode then
-            local s=active(arena)
-            if s and not s.MotionUncertain and s.Reliable and s.Surface=='wall' and s.Point then
-                local untilWall=s.EndTime-now
-                local _,dist=horizontal(root.Position,s.Point)
-                if untilWall>0.02
-                    and untilWall<=math.min(1.05,C.DiveLead+0.2)
-                    and dist<=65 then
-                    local score=untilWall+dist*0.005
-                    if score<best then result,best=s,score end
-                end
-            end
-        end
-    end
-    return result
-end
-
-
-
-local function startProfile()
-    local root=character()
-    if not root then return end
-    profileSample={Start=os.clock(),Position=root.Position,
-        Direction=root.CFrame.LookVector,LastBin=-1}
-end
-
-local function measureProfile()
-    if not profileSample then return end
-    local root=character()
-    if not root then profileSample=nil return end
-    local elapsed=os.clock()-profileSample.Start
-    local bin=math.floor(elapsed/0.05)
-    if bin>profileSample.LastBin and bin>=1 and bin<=11 then
-        profileSample.LastBin=bin
-        local dir=Vector3.new(profileSample.Direction.X,0,
-            profileSample.Direction.Z)
-        if dir.Magnitude>0.01 then
-            local delta=root.Position-profileSample.Position
-            local dist=math.max(0,delta:Dot(dir.Unit))
-            if dist>=0 and dist<=80 then
-                local prior=learnedDiveProfile[bin]
-                learnedDiveProfile[bin]=prior and
-                    (prior*0.65+dist*0.35) or dist
-            end
-        end
-    end
-    if elapsed>=0.60 then profileSample=nil end
-end
-
-local function travelSeconds(dist)
-    local travel=math.max(0,dist-2.2)
-    
-    
-    local previous=0
-    for bin=1,11 do
-        local d=learnedDiveProfile[bin]
-        if d then
-            if d>=travel then
-                local fraction=0
-                if d>previous+0.01 then
-                    fraction=math.clamp((travel-previous)/(d-previous),0,1)
-                end
-                return math.clamp((bin-1+fraction)*0.05,0.035,0.54)
-            end
-            previous=math.max(previous,d)
-        end
-    end
-    
-    
-    
-    
-    if travel <= 5 then
-        return math.max(0.025, 0.04 * travel/5)
-    elseif travel <= 12 then
-        return 0.04 + (travel-5)*0.060/7
-    elseif travel <= 20 then
-        return 0.10 + (travel-12)*0.105/8
-    end
-    return math.clamp(0.205+(travel-20)*0.055,0.205,0.48)
-end
-
-
-local function diveLeadFor(s,dist)
-    local network=math.clamp(ping,0,0.16)
-    
-    local speedBonus=math.clamp((s.ImpactSpeed-38)*0.0013,0,0.065)
-    
-    local manual=math.clamp((C.DiveLead-0.15)*0.055,0,0.075)
-    return math.clamp(travelSeconds(dist)+network
-        +C.InputDelay+C.SafetyLead+speedBonus+manual,0.13,0.78)
-end
-
-
-
-local function shouldLaunchNow(s,remaining,lead)
-    local speedPad=math.clamp((s.ImpactSpeed-48)*0.0011,0,0.055)
-    return remaining<=lead+C.EmergencyWindow+speedPad
-        or remaining<=math.max(0.18,ping*0.5+0.12)
-end
-
-local function observedDive()
-    lastNativeStart=os.clock()
-    lastDive=os.clock()
-    if steerActive and os.clock()-steerArmedAt<=0.34 then
-        
-        
-        steerAnimationSeen=true
-    end
-    if pending then
-        print('[VolleyBomb v8.0 Dive] Animacao do dive detectada: cancelar comando duplicado')
-        pending=nil
-    end
-    startProfile()
-    
-    aimTarget=nil
-    aimUntil=0
-    restoreRotation()
-end
-
+-- A animacao do jogo confirma o dive mesmo quando o impulso muda com ping.
+-- Nao inicia uma jogada automaticamente.
 local animationLink
 local function attachAnimator()
     if animationLink then animationLink:Disconnect() animationLink=nil end
@@ -2288,92 +2194,45 @@ local function attachAnimator()
     if not ch then return end
     task.spawn(function()
         local hum=ch:WaitForChild('Humanoid',5)
-        if not hum or stopped then return end
+        if stopped or not hum then return end
         local animator=hum:WaitForChild('Animator',5)
-        if not animator or stopped then return end
+        if stopped or not animator then return end
         animationLink=animator.AnimationPlayed:Connect(function(track)
-            local animation=track.Animation
-            local id=animation and animation.AnimationId or ''
-            if string.find(id,'125582828675515',1,true)
-                and os.clock()-lastPhysicalPress<2 then
-                observedDive()
+            local anim=track.Animation
+            local id=anim and anim.AnimationId or ''
+            if not id:find('125582828675515',1,true) then return end
+            lastNativeStart=os.clock()
+            lastDive=lastNativeStart
+            if not C.SmartDive then return end
+            if not steerActive then
+                -- Suporta dive acionado por controle de toque ou outro bind.
+                beginSmartDive('animation')
+            end
+            if steerActive then
+                smartAnimationSeen=true
+                smartTimeout=os.clock()+0.16
             end
         end)
     end)
 end
 attachAnimator()
-links[#links+1]=me.CharacterAdded:Connect(attachAnimator)
-
+links[#links+1]=me.CharacterAdded:Connect(function()
+    stopSteering()
+    attachAnimator()
+end)
 
 local function cancelSmart()
+    stopSteering()
     pending=nil
     aimTarget=nil
     aimUntil=0
-    stopSteering()
 end
-
-
-local function explainNoCandidate()
-    local root=character()
-    for arena in pairs(markers) do
-        local s=active(arena)
-        if s then
-            local _,dist=nil,nil
-            if root and s.Point then
-                _,dist=horizontal(root.Position,s.Point)
-            end
-            local same=(root and s.Point) and ownSide(s,root) or false
-            print(string.format(
-                '[VolleyBomb v8.0 Dive] %s | tipo=%s | confiavel=%s | incerto=%s | dist=%s | minhaArea=%s | faltam=%.3fs',
-                arena,tostring(s.Surface),tostring(s.Reliable),
-                tostring(s.MotionUncertain),dist and string.format('%.1f',dist) or '?',
-                tostring(same),s.EndTime-W:GetServerTimeNow()))
-        end
-    end
-end
-
-local function onSmartDive(_,inputState)
-    if stopped or not C.SmartDive then
-        return Enum.ContextActionResult.Pass
-    end
-    if inputState==Enum.UserInputState.Begin and not U:GetFocusedTextBox() then
-        aimAndDiveNatively()
-    end
-    
-    return Enum.ContextActionResult.Pass
-end
-
-local function shouldBindSmart()
-    return not stopped and C.SmartDive
-end
-
-local function updateEIntercept()
-    local bind=shouldBindSmart()
-    if bind and not inputBound then
-        local ok,err=pcall(function()
-            CAS:BindActionAtPriority(actionKey,onSmartDive,false,10000,Enum.KeyCode.E)
-        end)
-        inputBound=ok
-        if ok then print('[VolleyBomb v8.0] E monitorado: Pass ao Dive nativo (prioridade 2000)') end
-        if not ok then
-            warn('[VolleyBomb] Nao foi possivel interceptar E: '..tostring(err))
-        end
-    elseif not bind and inputBound then
-        CAS:UnbindAction(actionKey)
-        inputBound=false
-        print('[VolleyBomb v8.0] E assistido desconectado; E 100% nativo')
-    end
-end
-
-
 
 links[#links+1]=Run.Heartbeat:Connect(function()
     if stopped then return end
     samplePing()
-    learnDive()
     updateBallMotion()
     updateMarkers()
-    measureProfile()
     updateEIntercept()
 end)
 
@@ -2384,7 +2243,6 @@ Run:BindToRenderStep(renderKey,Enum.RenderPriority.Camera.Value+10,function()
 
     
     if steerActive then
-        restoreRotation()
         return
     end
     
@@ -2737,8 +2595,8 @@ end
 links[#links+1]=exitButton.MouseButton1Click:Connect(function()
     stop('close')
 end)
-env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.22'}
-print('[VolleyBomb v9.22] Rebote 0.60 e normal do BallState; Dive v8.0 preservado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
+env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.23'}
+print('[VolleyBomb v9.23] Rebote 0.60 e normal do BallState; Dive v8.0 preservado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
 ]=]
 
 local RUNNER = [==[
@@ -2746,11 +2604,11 @@ return function(expectedUniverse, core, runner)
     if not game:IsLoaded() then game.Loaded:Wait() end
     local universe = game.GameId
     if type(universe) ~= 'number' or universe == 0 then
-        warn('[VolleyBomb v9.22] Nao foi possivel reconhecer o universo do jogo.')
+        warn('[VolleyBomb v9.23] Nao foi possivel reconhecer o universo do jogo.')
         return
     end
     if expectedUniverse and expectedUniverse ~= universe then
-        warn('[VolleyBomb v9.22] Outro jogo detectado. Autoexecucao ignorada.')
+        warn('[VolleyBomb v9.23] Outro jogo detectado. Autoexecucao ignorada.')
         return
     end
     local replicated = game:GetService('ReplicatedStorage')
@@ -2761,7 +2619,7 @@ return function(expectedUniverse, core, runner)
     local ballState = net and (net:FindFirstChild('RE/BallState')
         or net:WaitForChild('RE/BallState', 25))
     if not ballState or not ballState:IsA('RemoteEvent') then
-        warn('[VolleyBomb v9.22] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
+        warn('[VolleyBomb v9.23] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
         return
     end
 
@@ -2812,26 +2670,26 @@ return function(expectedUniverse, core, runner)
     
     local compiled,err=loadstring(core)
     if not compiled then
-        warn('[VolleyBomb v9.22] Erro ao ler codigo principal: '..tostring(err))
+        warn('[VolleyBomb v9.23] Erro ao ler codigo principal: '..tostring(err))
         return
     end
     local ok,runtimeErr=pcall(compiled)
     if not ok then
-        warn('[VolleyBomb v9.22] Erro na execucao: '..tostring(runtimeErr))
+        warn('[VolleyBomb v9.23] Erro na execucao: '..tostring(runtimeErr))
         return
     end
 
     local current=environ.VolleyBombLanding
-    if type(current)~='table' or current.Version~='9.22' then return end
+    if type(current)~='table' or current.Version~='9.23' then return end
 
     
     
     current.CancelTeleport=function()
         local success,message=clearQueuedTeleports()
         if success then
-            print('[VolleyBomb v9.22] X: Auto-inicio desligado e fila de teleportes limpa.')
+            print('[VolleyBomb v9.23] X: Auto-inicio desligado e fila de teleportes limpa.')
         else
-            warn('[VolleyBomb v9.22] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
+            warn('[VolleyBomb v9.23] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
         end
         return success
     end
@@ -2840,12 +2698,12 @@ return function(expectedUniverse, core, runner)
     
     local cleared,why=clearQueuedTeleports()
     if not cleared then
-        warn('[VolleyBomb v9.22] Nao deu para limpar copias antigas: '..tostring(why))
+        warn('[VolleyBomb v9.23] Nao deu para limpar copias antigas: '..tostring(why))
     end
 
     local queue=getTeleportQueue()
     if not queue then
-        warn('[VolleyBomb v9.22] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
+        warn('[VolleyBomb v9.23] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
         return
     end
 
@@ -2855,28 +2713,28 @@ local core = %q
 local runner = %q
 local compiler, errorMessage = loadstring(runner)
 if not compiler then
-    warn('[VolleyBomb v9.22] Erro no auto-inicio: '..tostring(errorMessage))
+    warn('[VolleyBomb v9.23] Erro no auto-inicio: '..tostring(errorMessage))
 else
     local success, launch = pcall(compiler)
     if success and type(launch)=='function' then
         launch(expectedUniverse, core, runner)
     else
-        warn('[VolleyBomb v9.22] Auto-inicio indisponivel: '..tostring(launch))
+        warn('[VolleyBomb v9.23] Auto-inicio indisponivel: '..tostring(launch))
     end
 end
 ]=], universe, core, runner)
     local registered,queueErr=pcall(queue,queuedCode)
     if registered then
         environ.VolleyBombLandingTeleportQueued=
-            tostring(universe)..'/'..tostring(game.JobId)..'/v9.22'
-        print('[VolleyBomb v9.22] Auto-inicio preparado. X cancela o proximo servidor.')
+            tostring(universe)..'/'..tostring(game.JobId)..'/v9.23'
+        print('[VolleyBomb v9.23] Auto-inicio preparado. X cancela o proximo servidor.')
     else
-        warn('[VolleyBomb v9.22] Falha ao preparar proximo servidor: '..tostring(queueErr))
+        warn('[VolleyBomb v9.23] Falha ao preparar proximo servidor: '..tostring(queueErr))
     end
 end
 ]==]
 
 local compiled,err=loadstring(RUNNER)
-if not compiled then error('[VolleyBomb v9.22] Erro de inicializacao: '..tostring(err)) end
+if not compiled then error('[VolleyBomb v9.23] Erro de inicializacao: '..tostring(err)) end
 local start=compiled()
 start(nil,CORE,RUNNER)
