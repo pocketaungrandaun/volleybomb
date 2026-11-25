@@ -47,7 +47,7 @@ local hasV65Preferences=false
 
 local function loadSettings(data)
     if type(data)~='table' then return end
-    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' or data.Version=='9.17' or data.Version=='9.18' or data.Version=='9.19' or data.Version=='9.20' or data.Version=='9.21' or data.Version=='9.22' or data.Version=='9.23' or data.Version=='9.24' or data.Version=='9.25' or data.Version=='9.26' or data.Version=='9.27' or data.Version=='9.28' then hasV65Preferences=true end
+    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' or data.Version=='9.17' or data.Version=='9.18' or data.Version=='9.19' or data.Version=='9.20' or data.Version=='9.21' or data.Version=='9.22' or data.Version=='9.23' or data.Version=='9.24' or data.Version=='9.25' or data.Version=='9.26' or data.Version=='9.27' or data.Version=='9.28' or data.Version=='9.29' then hasV65Preferences=true end
     for _,key in ipairs(savedKeys) do
         local value=data[key]
         if key=='DiveLead' then
@@ -92,13 +92,23 @@ if type(old)=='table' then
     if type(old.Stop)=='function' then pcall(old.Stop,'replace') end
 end
 
+-- O AutoPlayer experimental usa Humanoid:Move num RenderStep mais tardio,
+-- sobrescrevendo as direcoes do Smart Dive. Nao deixar os dois ativos.
+do
+    local auto=env.VolleyBombAutoPlayer
+    if type(auto)=='table' and type(auto.Stop)=='function' then
+        pcall(auto.Stop)
+        warn('[VolleyBomb] AutoPlayer anterior encerrado para nao disputar WASD com Smart Dive.')
+    end
+end
+
 C.Main=true
 C.Practice=true
 
 C.SteerDive=true
 
 local function saveSettings()
-    local data={Version='9.28',UI={}}
+    local data={Version='9.29',UI={}}
     for _,key in ipairs(savedKeys) do data[key]=C[key] end
     for _,key in ipairs({'IconX','IconY','PanelX','PanelY'}) do
         data.UI[key]=uiPrefs[key]
@@ -815,6 +825,15 @@ local function detectMode(force)
         currentMode='Lobby'
         return currentMode
     end
+    -- O proprio jogo atribui InRound ao jogador nas partidas oficiais.
+    -- Em Main, as zonas podem mudar entre rounds e a posicao sozinha
+    -- pode ser classificada incorretamente como Lobby.
+    local assigned=me:GetAttribute('InRound')
+    if assigned=='Main' or assigned=='Practice' then
+        currentMode=assigned
+        modeLastConfirmed=now
+        return currentMode
+    end
     local chosen='Lobby'
     local bestDist=math.huge
     local pos=root.Position
@@ -1199,12 +1218,17 @@ end
 local function ownSide(s,root)
     local impact=zoneAt(s.Zones,s.Point)
     local mine=zoneAt(s.Zones,root.Position)
-    
-    
-    if next(owned[s.Arena])~=nil then
-        return impact~=nil and owned[s.Arena][impact]==true
-    end
+
+    -- Em Main as zonas sao atualizadas entre rounds. A antiga tabela
+    -- 'owned' pode apontar para Parts que ja nao pertencem a rodada.
+    -- A referencia atual de s.Zones deve ter prioridade.
     if impact and mine then return impact==mine end
+    if not impact then return false end
+    if next(owned[s.Arena])~=nil then
+        for zone in pairs(owned[s.Arena]) do
+            if zone==impact and zone.Parent then return true end
+        end
+    end
     if s.Arena~='Practice' then return false end
     local a=floorAt(root.Position)
     local b=floorAt(s.Point)
@@ -1398,8 +1422,10 @@ links[#links+1]=event.OnClientEvent:Connect(function(raw)
     if changedZones then FPS.Revision=FPS.Revision+1 end
     detectMode(true)
     
-    if C.SmartDive and not areaAttempt[arena] and #zoneList>0 then
-        if lockZone(arena,true) then areaAttempt[arena]=true end
+    if C.SmartDive and #zoneList>0
+        and (changedZones or not areaAttempt[arena]) then
+        -- Reaprende a zona da rodada, sem acumular Parts obsoletas.
+        if lockZone(arena,false) then areaAttempt[arena]=true end
     end
     
     
@@ -1977,27 +2003,38 @@ local function stopSteering()
 end
 
 local function safeDiveTarget(root)
-    local arena=detectMode()
-    if arena~='Main' and arena~='Practice' then return nil end
+    local arena=detectMode(true)
+    if arena~='Main' and arena~='Practice' then
+        return nil,'arena nao reconhecida'
+    end
     local s=correctedState and correctedState(arena)
-    if not s or s.Surface~='floor' or not s.Reliable
+    if not s then return nil,'BallState sem alvo valido em '..arena end
+    if s.Surface~='floor' or not s.Reliable
         or s.MotionUncertain or s.Live
         or typeof(s.Point)~='Vector3'
         or typeof(s.Normal)~='Vector3' or s.Normal.Y<0.88
-        or type(s.EndTime)~='number' then return nil end
+        or type(s.EndTime)~='number' then
+        return nil,'impacto nao confirmado no chao'
+    end
 
     local timeLeft=s.EndTime-W:GetServerTimeNow()
-    if timeLeft < -0.035 or timeLeft >1.05 then return nil end
-
+    -- Os saques publicos podem ter trajetorias mais longas que Practice.
+    if timeLeft < -0.045 or timeLeft>1.65 then
+        return nil,string.format('tempo de impacto %.2fs',timeLeft)
+    end
     local direction,dist=horizontal(root.Position,s.Point)
-    if not direction or dist>43 then return nil end
+    if not direction or dist>43 then
+        return nil,string.format('distancia %.1f studs',dist or 0)
+    end
 
-    -- Nao atravessa para o outro time; em arenas sem Zones, ignora
-    -- pontos muito distantes por nao ser possivel validar o proprio lado.
+    -- So segue ponto validado do proprio lado. Se a zona anterior mudou,
+    -- usa primeiramente a Part atual onde o personagem esta.
     if type(s.Zones)=='table' and #s.Zones>0 then
-        if not ownSide(s,root) then return nil end
+        if not ownSide(s,root) then
+            return nil,'queda fora da zona atual'
+        end
     elseif dist>25 then
-        return nil
+        return nil,'sem zona e alvo distante'
     end
     return s,arena,direction,dist,timeLeft
 end
@@ -2077,8 +2114,12 @@ local function beginSmartDive(origin)
 
     local root,hum=character()
     if not root or not hum or hum.Health<=0 or root.Anchored then return end
-    local target,arena= safeDiveTarget(root)
-    if not target then return end
+    local target,arena=safeDiveTarget(root)
+    if not target then
+        lastDecision='E sem assistencia: '..tostring(arena)
+        warn('[VolleyBomb Smart Dive] '..lastDecision)
+        return
+    end
 
     -- Antes de E, fornece ao Humanoid uma direcao equivalente a WASD,
     -- relativa a camera. Mantem a orientacao do corpo, sem mirar a bola.
@@ -2734,8 +2775,8 @@ end
 links[#links+1]=exitButton.MouseButton1Click:Connect(function()
     stop('close')
 end)
-env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.28'}
-print('[VolleyBomb v9.28] Smart Dive v2.4: WASD lateral preserva orientacao antes do E. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
+env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.29'}
+print('[VolleyBomb v9.29] Smart Dive v2.5: Main detectado pelo jogo, zonas renovadas e AutoPlayer desligado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
 ]=]
 
 local RUNNER = [==[
@@ -2743,11 +2784,11 @@ return function(expectedUniverse, core, runner)
     if not game:IsLoaded() then game.Loaded:Wait() end
     local universe = game.GameId
     if type(universe) ~= 'number' or universe == 0 then
-        warn('[VolleyBomb v9.28] Nao foi possivel reconhecer o universo do jogo.')
+        warn('[VolleyBomb v9.29] Nao foi possivel reconhecer o universo do jogo.')
         return
     end
     if expectedUniverse and expectedUniverse ~= universe then
-        warn('[VolleyBomb v9.28] Outro jogo detectado. Autoexecucao ignorada.')
+        warn('[VolleyBomb v9.29] Outro jogo detectado. Autoexecucao ignorada.')
         return
     end
     local replicated = game:GetService('ReplicatedStorage')
@@ -2758,7 +2799,7 @@ return function(expectedUniverse, core, runner)
     local ballState = net and (net:FindFirstChild('RE/BallState')
         or net:WaitForChild('RE/BallState', 25))
     if not ballState or not ballState:IsA('RemoteEvent') then
-        warn('[VolleyBomb v9.28] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
+        warn('[VolleyBomb v9.29] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
         return
     end
 
@@ -2809,26 +2850,26 @@ return function(expectedUniverse, core, runner)
     
     local compiled,err=loadstring(core)
     if not compiled then
-        warn('[VolleyBomb v9.28] Erro ao ler codigo principal: '..tostring(err))
+        warn('[VolleyBomb v9.29] Erro ao ler codigo principal: '..tostring(err))
         return
     end
     local ok,runtimeErr=pcall(compiled)
     if not ok then
-        warn('[VolleyBomb v9.28] Erro na execucao: '..tostring(runtimeErr))
+        warn('[VolleyBomb v9.29] Erro na execucao: '..tostring(runtimeErr))
         return
     end
 
     local current=environ.VolleyBombLanding
-    if type(current)~='table' or current.Version~='9.28' then return end
+    if type(current)~='table' or current.Version~='9.29' then return end
 
     
     
     current.CancelTeleport=function()
         local success,message=clearQueuedTeleports()
         if success then
-            print('[VolleyBomb v9.28] X: Auto-inicio desligado e fila de teleportes limpa.')
+            print('[VolleyBomb v9.29] X: Auto-inicio desligado e fila de teleportes limpa.')
         else
-            warn('[VolleyBomb v9.28] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
+            warn('[VolleyBomb v9.29] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
         end
         return success
     end
@@ -2837,12 +2878,12 @@ return function(expectedUniverse, core, runner)
     
     local cleared,why=clearQueuedTeleports()
     if not cleared then
-        warn('[VolleyBomb v9.28] Nao deu para limpar copias antigas: '..tostring(why))
+        warn('[VolleyBomb v9.29] Nao deu para limpar copias antigas: '..tostring(why))
     end
 
     local queue=getTeleportQueue()
     if not queue then
-        warn('[VolleyBomb v9.28] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
+        warn('[VolleyBomb v9.29] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
         return
     end
 
@@ -2852,28 +2893,28 @@ local core = %q
 local runner = %q
 local compiler, errorMessage = loadstring(runner)
 if not compiler then
-    warn('[VolleyBomb v9.28] Erro no auto-inicio: '..tostring(errorMessage))
+    warn('[VolleyBomb v9.29] Erro no auto-inicio: '..tostring(errorMessage))
 else
     local success, launch = pcall(compiler)
     if success and type(launch)=='function' then
         launch(expectedUniverse, core, runner)
     else
-        warn('[VolleyBomb v9.28] Auto-inicio indisponivel: '..tostring(launch))
+        warn('[VolleyBomb v9.29] Auto-inicio indisponivel: '..tostring(launch))
     end
 end
 ]=], universe, core, runner)
     local registered,queueErr=pcall(queue,queuedCode)
     if registered then
         environ.VolleyBombLandingTeleportQueued=
-            tostring(universe)..'/'..tostring(game.JobId)..'/v9.28'
-        print('[VolleyBomb v9.28] Auto-inicio preparado. X cancela o proximo servidor.')
+            tostring(universe)..'/'..tostring(game.JobId)..'/v9.29'
+        print('[VolleyBomb v9.29] Auto-inicio preparado. X cancela o proximo servidor.')
     else
-        warn('[VolleyBomb v9.28] Falha ao preparar proximo servidor: '..tostring(queueErr))
+        warn('[VolleyBomb v9.29] Falha ao preparar proximo servidor: '..tostring(queueErr))
     end
 end
 ]==]
 
 local compiled,err=loadstring(RUNNER)
-if not compiled then error('[VolleyBomb v9.28] Erro de inicializacao: '..tostring(err)) end
+if not compiled then error('[VolleyBomb v9.29] Erro de inicializacao: '..tostring(err)) end
 local start=compiled()
 start(nil,CORE,RUNNER)
