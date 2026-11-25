@@ -159,14 +159,9 @@ local aimTarget,pending=nil,nil
 local diveAnimations={}
 local lastPhysicalPress=-math.huge
 local lastNativeStart=-math.huge
-local learnedDiveProfile={}
-local profileSample=nil
-local diveAnimating=false
 local lastDecision='Aguardando E'
-local aimUntil,blockMoveUntil=0,0
-local lastDive,lastID=-math.huge,nil
-local sample=nil
-local measuredSpeed=nil
+local aimUntil=0
+local lastDive=-math.huge
 local ping=0.08
 local lastPing=0
 local renderKey='VolleyLanding85_Render'
@@ -178,15 +173,10 @@ local steerTarget=nil
 local steerDirection=nil 
 local steerUntil=0
 local steerActive=false
-local lastSteerDistance=nil
-local steerPathLength=0 
-local steerAnimationSeen=false
 local steerArmedAt=0
-local steerStarted=false       
+local steerStarted=false
 local steerDetectedAt=0
-local steerStartSource=''
 local steerStartPosition=nil
-local activePressAt=0
 local liveTracks={Main={Samples={},Next=0},Practice={Samples={},Next=0}}
 
 local function make(class,properties,parent)
@@ -1949,7 +1939,6 @@ local smartTriggerAt=-math.huge
 local smartConfirmed=false
 local smartAnimationSeen=false
 local smartArena=nil
-local smartBallTime=nil
 local smartLastTarget=nil
 local smartLastFrame=0
 local smartTimeout=0
@@ -1964,14 +1953,14 @@ local function stopSteering()
     smartConfirmed=false
     smartAnimationSeen=false
     smartArena=nil
-    smartBallTime=nil
     smartLastTarget=nil
+    smartLastFrame=0
     smartBurstSpeed=0
     restoreRotation()
 end
 
 local function safeDiveTarget(root)
-    local arena=detectMode(true)
+    local arena=detectMode()
     if arena~='Main' and arena~='Practice' then return nil end
     local s=correctedState and correctedState(arena)
     if not s or s.Surface~='floor' or not s.Reliable
@@ -2024,7 +2013,6 @@ local function beginSmartDive(origin)
     smartAnimationSeen=false
     smartConfirmed=false
     smartArena=arena
-    smartBallTime=target.Raw and target.Raw.Time or target.Time
     smartLastTarget=target.Point
     smartBurstSpeed=0
     lastDecision='Dive nativo solicitado; aguardando movimento real'
@@ -2064,7 +2052,7 @@ local function steerPhysics()
             stopSteering()
             return
         end
-        if smartAnimationSeen or
+        if (smartAnimationSeen and speed>=18) or
             (speed>=53 and speed<=160 and now-smartTriggerAt<=0.32) then
             smartConfirmed=true
             steerStarted=true
@@ -2596,7 +2584,7 @@ links[#links+1]=exitButton.MouseButton1Click:Connect(function()
     stop('close')
 end)
 env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.23'}
-print('[VolleyBomb v9.23] Rebote 0.60 e normal do BallState; Dive v8.0 preservado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
+print('[VolleyBomb v9.23] Smart Dive v2: assistencia reativa ao E nativo. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
 ]=]
 
 local RUNNER = [==[
