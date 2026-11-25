@@ -1296,9 +1296,14 @@ local function watchPublicServe(raw)
         or math.abs(raw.EndTime-raw.Time)>0.02
         or typeof(raw.Velocity)~='Vector3'
         or raw.Velocity.Magnitude>0.2 then
-        -- Quando o saque ja aconteceu, nao deve acontecer giro tardio.
-        if type(raw)=='table' and raw.Arena=='Main'
-            and (raw.Hits and raw.Hits>0) then
+        -- Quando o saque comecou, nao vira a camera atrasado.
+        -- O primeiro arremesso pode ainda ter Hits=0; Velocity/Hitter
+        -- indicam que ja saiu da fase de preparo do sacador.
+        if type(raw)=='table' and raw.Arena=='Main' and
+            ((type(raw.Hits)=='number' and raw.Hits>0)
+            or raw.Hitter~=nil
+            or (raw.Server==nil and typeof(raw.Velocity)=='Vector3'
+                and raw.Velocity.Magnitude>1)) then
             cancelServeCamera()
         end
         return
