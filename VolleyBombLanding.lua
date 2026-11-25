@@ -47,7 +47,7 @@ local hasV65Preferences=false
 
 local function loadSettings(data)
     if type(data)~='table' then return end
-    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' or data.Version=='9.17' or data.Version=='9.18' or data.Version=='9.19' or data.Version=='9.20' or data.Version=='9.21' then hasV65Preferences=true end
+    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' or data.Version=='9.17' or data.Version=='9.18' or data.Version=='9.19' or data.Version=='9.20' or data.Version=='9.21' or data.Version=='9.22' then hasV65Preferences=true end
     for _,key in ipairs(savedKeys) do
         local value=data[key]
         if key=='DiveLead' then
@@ -98,7 +98,7 @@ C.Practice=true
 C.SteerDive=true
 
 local function saveSettings()
-    local data={Version='9.21',UI={}}
+    local data={Version='9.22',UI={}}
     for _,key in ipairs(savedKeys) do data[key]=C[key] end
     for _,key in ipairs({'IconX','IconY','PanelX','PanelY'}) do
         data.UI[key]=uiPrefs[key]
@@ -1237,151 +1237,107 @@ local function abilityTagged(raw)
 end
 
 
--- Camera no comeco do saque publico: um unico ajuste de angulo.
--- Nao segue a bola, nao altera CameraSubject, nao trava a camera.
+-- Quick Look: usa o sacador fornecido diretamente pelo servidor em BallState.
+-- Zero heuristica de proximidade, zero lock-on ou acompanhamento de bola.
 local cameraServeBind='VolleyBombServeCamera_'..tostring(me.UserId)
 local cameraSnapPlayer=nil
-local lastServeSnap=-math.huge
-local lastServeBall=nil
-local lastServeBallPosition=nil
-local serveCurrentMode='Lobby'
-local serveArmed=false
-local serveArmedAt=0
+local cameraSnapUntil=0
+local lastServeStateTime=-math.huge
+local announcedServerName=nil
+local announcedServerAt=-math.huge
 
 local function cancelServeCamera()
     cameraSnapPlayer=nil
+    cameraSnapUntil=0
 end
 
-local function closestPublicServer(ballPosition)
-    if typeof(ballPosition)~='Vector3' then return nil end
-    local closest,best=nil,math.huge
+local function mainMatchActive()
+    -- InRound e usado pelo BallController original para definir a arena ativa.
+    local assigned=me:GetAttribute('InRound')
+    if assigned~=nil then return assigned=='Main' end
+    return detectMode(true)=='Main'
+end
+
+local function announcedServer()
+    if not announcedServerName or os.clock()-announcedServerAt>1.5 then
+        return nil
+    end
+    local found=nil
     for _,player in ipairs(P:GetPlayers()) do
-        local char=player.Character
-        local root=char and char:FindFirstChild('HumanoidRootPart')
-        local hum=char and char:FindFirstChildOfClass('Humanoid')
-        if root and hum and hum.Health>0 then
-            local distance=(root.Position-ballPosition).Magnitude
-            if distance<best then
-                best=distance
-                closest=player
-            end
+        if player.Name==announcedServerName
+            or player.DisplayName==announcedServerName then
+            if found then return nil end
+            found=player
         end
     end
-    -- A bola so serve para identificar quem vai sacar.
-    -- Nunca direciona a camera para a posicao da bola.
-    if best<=16 then return closest end
-    return nil
+    return found
 end
 
--- Roda apos o controlador de camera do Roblox, uma unica vez.
--- No frame seguinte o jogador ja pode movimentar a camera normalmente.
+-- O jogo anuncia o nome de exibicao do sacador instantes antes do BallState.
+-- Serve apenas de fallback quando BallState.Server nao e um Player.
+local serveAnnouncement=R:WaitForChild('Packages'):WaitForChild('Net')
+    :FindFirstChild('RE/RoundNotification')
+if serveAnnouncement and serveAnnouncement:IsA('RemoteEvent') then
+    links[#links+1]=serveAnnouncement.OnClientEvent:Connect(function(_,message)
+        if stopped or not C.CameraServe or type(message)~='string' then return end
+        local name=message:match('^(.+) is serving$')
+        if name then
+            announcedServerName=name
+            announcedServerAt=os.clock()
+        end
+    end)
+end
+
+local function watchPublicServe(raw)
+    if stopped or not C.CameraServe or raw.Arena~='Main'
+        or raw.Dead or raw.Hits~=0
+        or type(raw.Time)~='number'
+        or type(raw.EndTime)~='number'
+        or math.abs(raw.EndTime-raw.Time)>0.02
+        or typeof(raw.Velocity)~='Vector3'
+        or raw.Velocity.Magnitude>0.2 then
+        -- Quando o saque ja aconteceu, nao deve acontecer giro tardio.
+        if type(raw)=='table' and raw.Arena=='Main'
+            and (raw.Hits and raw.Hits>0) then
+            cancelServeCamera()
+        end
+        return
+    end
+    if raw.Time<=lastServeStateTime then return end
+    lastServeStateTime=raw.Time
+    local player=raw.Server
+    if typeof(player)~='Instance' or not player:IsA('Player') then
+        player=announcedServer()
+    end
+    if not player or player==me then return end
+    -- Mantem pendente ate o cliente entrar em Main e a camera ficar livre.
+    -- Nao espera um tempo fixo antes de virar a camera.
+    cameraSnapPlayer=player
+    cameraSnapUntil=os.clock()+3
+end
+
+-- Aplica um unico giro apos o controlador de camera nativo.
+-- Nunca altera CameraType, CameraSubject nem segue o sacador.
 Run:BindToRenderStep(cameraServeBind,Enum.RenderPriority.Camera.Value+15,function()
     local target=cameraSnapPlayer
-    cameraSnapPlayer=nil
     if stopped or not C.CameraServe or not target then return end
-    if detectMode(true)~='Main' then return end
+    if os.clock()>cameraSnapUntil then
+        cancelServeCamera()
+        return
+    end
+    if not mainMatchActive() then return end
+    local cam=W.CurrentCamera
+    if not cam or cam.CameraType~=Enum.CameraType.Custom then return end
     local char=target.Character
     local root=char and char:FindFirstChild('HumanoidRootPart')
-    local cam=W.CurrentCamera
-    if not root or not cam then return end
-    -- Se a camera estiver presa a uma bola como CameraSubject,
-    -- devolver ao proprio personagem antes do giro unico.
-    local subject=cam.CameraSubject
-    if subject and subject:IsA('BasePart')
-        and (subject.Name=='Bowling Ball' or subject.Name=='Default') then
-        local ownChar=me.Character
-        local ownHum=ownChar and ownChar:FindFirstChildOfClass('Humanoid')
-        if ownHum then
-            cam.CameraSubject=ownHum
-            if cam.CameraType==Enum.CameraType.Scriptable then
-                cam.CameraType=Enum.CameraType.Custom
-            end
-        end
-    end
+    local hum=char and char:FindFirstChildOfClass('Humanoid')
+    if not root or not hum or hum.Health<=0 then return end
     local eye=cam.CFrame.Position
-    local face=root.Position+Vector3.new(0,2,0)
-    if (face-eye).Magnitude>0.5 then
-        cam.CFrame=CFrame.lookAt(eye,face)
+    local aim=root.Position+Vector3.new(0,1.8,0)
+    if (aim-eye).Magnitude>0.5 then
+        cam.CFrame=CFrame.lookAt(eye,aim)
     end
-end)
-
--- O inicio da partida/rally e reconhecido quando o jogador entra na
--- arena publica ou quando a bola principal reaparece/volta para o saque.
--- Nao espera o BallState (que chega quando a bola ja esta em movimento).
-links[#links+1]=Run.Heartbeat:Connect(function()
-    if stopped then return end
-    if not C.CameraServe then
-        serveCurrentMode='Lobby'
-        serveArmed=false
-        lastServeBall=nil
-        lastServeBallPosition=nil
-        cameraSnapPlayer=nil
-        return
-    end
-
-    local mode=detectMode(true)
-    if mode~='Main' then
-        serveCurrentMode=mode
-        serveArmed=false
-        lastServeBall=nil
-        lastServeBallPosition=nil
-        cameraSnapPlayer=nil
-        return
-    end
-
-    local now=os.clock()
-    if serveCurrentMode~='Main' then
-        serveArmed=true
-        serveArmedAt=now
-        lastServeBall=nil
-        lastServeBallPosition=nil
-    end
-    serveCurrentMode='Main'
-
-    local ball=W:FindFirstChild('Bowling Ball')
-    if not ball or not ball:IsA('BasePart') then
-        if lastServeBall~=nil then
-            serveArmed=true
-            serveArmedAt=now
-        end
-        lastServeBall=nil
-        lastServeBallPosition=nil
-        return
-    end
-
-    local pos=ball.Position
-    local speed=ball.AssemblyLinearVelocity.Magnitude
-    local changed=ball~=lastServeBall
-    local jumped=not changed and lastServeBallPosition
-        and (pos-lastServeBallPosition).Magnitude>13 and speed<12
-
-    lastServeBall=ball
-    lastServeBallPosition=pos
-
-    if changed or jumped then
-        serveArmed=true
-        serveArmedAt=now
-    end
-    if not serveArmed then return end
-
-    -- Se a bola ja esta em voo, evita girar a camera tarde ou
-    -- selecionar alguem que encostou nela no meio da jogada.
-    if speed>14 then
-        serveArmed=false
-        return
-    end
-    if now-serveArmedAt>2.5 then
-        serveArmed=false
-        return
-    end
-    if now-lastServeSnap<0.9 then return end
-
-    local server=closestPublicServer(pos)
-    if server then
-        cameraSnapPlayer=server
-        lastServeSnap=now
-        serveArmed=false
-    end
+    cancelServeCamera()
 end)
 
 links[#links+1]=event.OnClientEvent:Connect(function(raw)
@@ -1391,6 +1347,7 @@ links[#links+1]=event.OnClientEvent:Connect(function(raw)
     if type(raw.Time)~='number' or type(raw.EndTime)~='number' then return end
     local oldState=states[arena]
     if oldState and raw.Time<oldState.Time then return end
+    watchPublicServe(raw)
     local point,normal,error,velocity,collisionTime,reliable,surface,bounces=
         nativeFloorForecast(raw)
     local nativePrediction=point~=nil
@@ -2775,8 +2732,8 @@ end
 links[#links+1]=exitButton.MouseButton1Click:Connect(function()
     stop('close')
 end)
-env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.21'}
-print('[VolleyBomb v9.21] Rebote 0.60 e normal do BallState; Dive v8.0 preservado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
+env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.22'}
+print('[VolleyBomb v9.22] Rebote 0.60 e normal do BallState; Dive v8.0 preservado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
 ]=]
 
 local RUNNER = [==[
@@ -2784,11 +2741,11 @@ return function(expectedUniverse, core, runner)
     if not game:IsLoaded() then game.Loaded:Wait() end
     local universe = game.GameId
     if type(universe) ~= 'number' or universe == 0 then
-        warn('[VolleyBomb v9.21] Nao foi possivel reconhecer o universo do jogo.')
+        warn('[VolleyBomb v9.22] Nao foi possivel reconhecer o universo do jogo.')
         return
     end
     if expectedUniverse and expectedUniverse ~= universe then
-        warn('[VolleyBomb v9.21] Outro jogo detectado. Autoexecucao ignorada.')
+        warn('[VolleyBomb v9.22] Outro jogo detectado. Autoexecucao ignorada.')
         return
     end
     local replicated = game:GetService('ReplicatedStorage')
@@ -2799,7 +2756,7 @@ return function(expectedUniverse, core, runner)
     local ballState = net and (net:FindFirstChild('RE/BallState')
         or net:WaitForChild('RE/BallState', 25))
     if not ballState or not ballState:IsA('RemoteEvent') then
-        warn('[VolleyBomb v9.21] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
+        warn('[VolleyBomb v9.22] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
         return
     end
 
@@ -2850,26 +2807,26 @@ return function(expectedUniverse, core, runner)
     
     local compiled,err=loadstring(core)
     if not compiled then
-        warn('[VolleyBomb v9.21] Erro ao ler codigo principal: '..tostring(err))
+        warn('[VolleyBomb v9.22] Erro ao ler codigo principal: '..tostring(err))
         return
     end
     local ok,runtimeErr=pcall(compiled)
     if not ok then
-        warn('[VolleyBomb v9.21] Erro na execucao: '..tostring(runtimeErr))
+        warn('[VolleyBomb v9.22] Erro na execucao: '..tostring(runtimeErr))
         return
     end
 
     local current=environ.VolleyBombLanding
-    if type(current)~='table' or current.Version~='9.21' then return end
+    if type(current)~='table' or current.Version~='9.22' then return end
 
     
     
     current.CancelTeleport=function()
         local success,message=clearQueuedTeleports()
         if success then
-            print('[VolleyBomb v9.21] X: Auto-inicio desligado e fila de teleportes limpa.')
+            print('[VolleyBomb v9.22] X: Auto-inicio desligado e fila de teleportes limpa.')
         else
-            warn('[VolleyBomb v9.21] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
+            warn('[VolleyBomb v9.22] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
         end
         return success
     end
@@ -2878,12 +2835,12 @@ return function(expectedUniverse, core, runner)
     
     local cleared,why=clearQueuedTeleports()
     if not cleared then
-        warn('[VolleyBomb v9.21] Nao deu para limpar copias antigas: '..tostring(why))
+        warn('[VolleyBomb v9.22] Nao deu para limpar copias antigas: '..tostring(why))
     end
 
     local queue=getTeleportQueue()
     if not queue then
-        warn('[VolleyBomb v9.21] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
+        warn('[VolleyBomb v9.22] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
         return
     end
 
@@ -2893,28 +2850,28 @@ local core = %q
 local runner = %q
 local compiler, errorMessage = loadstring(runner)
 if not compiler then
-    warn('[VolleyBomb v9.21] Erro no auto-inicio: '..tostring(errorMessage))
+    warn('[VolleyBomb v9.22] Erro no auto-inicio: '..tostring(errorMessage))
 else
     local success, launch = pcall(compiler)
     if success and type(launch)=='function' then
         launch(expectedUniverse, core, runner)
     else
-        warn('[VolleyBomb v9.21] Auto-inicio indisponivel: '..tostring(launch))
+        warn('[VolleyBomb v9.22] Auto-inicio indisponivel: '..tostring(launch))
     end
 end
 ]=], universe, core, runner)
     local registered,queueErr=pcall(queue,queuedCode)
     if registered then
         environ.VolleyBombLandingTeleportQueued=
-            tostring(universe)..'/'..tostring(game.JobId)..'/v9.21'
-        print('[VolleyBomb v9.21] Auto-inicio preparado. X cancela o proximo servidor.')
+            tostring(universe)..'/'..tostring(game.JobId)..'/v9.22'
+        print('[VolleyBomb v9.22] Auto-inicio preparado. X cancela o proximo servidor.')
     else
-        warn('[VolleyBomb v9.21] Falha ao preparar proximo servidor: '..tostring(queueErr))
+        warn('[VolleyBomb v9.22] Falha ao preparar proximo servidor: '..tostring(queueErr))
     end
 end
 ]==]
 
 local compiled,err=loadstring(RUNNER)
-if not compiled then error('[VolleyBomb v9.21] Erro de inicializacao: '..tostring(err)) end
+if not compiled then error('[VolleyBomb v9.22] Erro de inicializacao: '..tostring(err)) end
 local start=compiled()
 start(nil,CORE,RUNNER)
