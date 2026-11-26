@@ -47,7 +47,7 @@ local hasV65Preferences=false
 
 local function loadSettings(data)
     if type(data)~='table' then return end
-    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' or data.Version=='9.17' or data.Version=='9.18' or data.Version=='9.19' or data.Version=='9.20' or data.Version=='9.21' or data.Version=='9.22' or data.Version=='9.23' or data.Version=='9.24' or data.Version=='9.25' or data.Version=='9.26' or data.Version=='9.27' or data.Version=='9.28' or data.Version=='9.29' then hasV65Preferences=true end
+    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' or data.Version=='9.17' or data.Version=='9.18' or data.Version=='9.19' or data.Version=='9.20' or data.Version=='9.21' or data.Version=='9.22' or data.Version=='9.23' or data.Version=='9.24' or data.Version=='9.25' or data.Version=='9.26' or data.Version=='9.27' or data.Version=='9.28' or data.Version=='9.29' or data.Version=='9.30' then hasV65Preferences=true end
     for _,key in ipairs(savedKeys) do
         local value=data[key]
         if key=='DiveLead' then
@@ -108,7 +108,7 @@ C.Practice=true
 C.SteerDive=true
 
 local function saveSettings()
-    local data={Version='9.29',UI={}}
+    local data={Version='9.30',UI={}}
     for _,key in ipairs(savedKeys) do data[key]=C[key] end
     for _,key in ipairs({'IconX','IconY','PanelX','PanelY'}) do
         data.UI[key]=uiPrefs[key]
@@ -1251,6 +1251,44 @@ local function abilityTagged(raw)
 end
 
 
+local serveTechnique={
+    MineUntil=0,
+    MagnetUntil=0,
+    LastSelfServeAt=-math.huge
+}
+-- O BallState replica o jogador que esta sacando no campo Server.
+-- Na transicao do saque para a bola em voo, Server some enquanto
+-- Hits ainda pode ser 0. A protecao persiste ate a primeira rebatida.
+local function updateServeTechnique(raw)
+    if type(raw)~='table' or raw.Arena~='Main' then return end
+    local now=os.clock()
+    local owner=raw.Server
+    if owner==me then
+        serveTechnique.MineUntil=now+10
+        serveTechnique.LastSelfServeAt=now
+    elseif typeof(owner)=='Instance' and owner:IsA('Player') then
+        serveTechnique.MineUntil=0
+    elseif type(raw.Hits)=='number' and raw.Hits>=1 then
+        serveTechnique.MineUntil=0
+    end
+    if raw.Magnet==me then
+        -- O estado Magnet pode sumir um pouco antes de terminar a tech.
+        serveTechnique.MagnetUntil=now+0.95
+    end
+end
+
+local function protectNativeDive()
+    local now=os.clock()
+    local raw=states.Main and states.Main.Raw
+    if raw and raw.Magnet==me then return true end
+    if detectMode(true)~='Main' then return false end
+    if now<serveTechnique.MineUntil or now<serveTechnique.MagnetUntil then
+        return true
+    end
+    if raw and raw.Server==me then return true end
+    return false
+end
+
 -- Quick Look: usa o sacador fornecido diretamente pelo servidor em BallState.
 -- Zero heuristica de proximidade, zero lock-on ou acompanhamento de bola.
 local cameraServeBind='VolleyBombServeCamera_'..tostring(me.UserId)
@@ -1366,6 +1404,7 @@ links[#links+1]=event.OnClientEvent:Connect(function(raw)
     if type(raw.Time)~='number' or type(raw.EndTime)~='number' then return end
     local oldState=states[arena]
     if oldState and raw.Time<oldState.Time then return end
+    updateServeTechnique(raw)
     watchPublicServe(raw)
     local point,normal,error,velocity,collisionTime,reliable,surface,bounces=
         nativeFloorForecast(raw)
@@ -2108,6 +2147,13 @@ local function beginSmartDive(origin)
         or U:GetFocusedTextBox() then return end
     local now=os.clock()
     lastPhysicalPress=now
+    if protectNativeDive() then
+        -- E continua no jogo (ContextActionResult.Pass), mas nenhum
+        -- Humanoid:Move, CFrame ou ajuste de velocidade e aplicado.
+        if steerActive then stopSteering() end
+        lastDecision='E original: saque proprio / Magnet'
+        return
+    end
     if now-smartInputDebounce<0.12 then return end
     smartInputDebounce=now
     if steerActive then stopSteering() end
@@ -2184,6 +2230,10 @@ end
 
 local function steerPhysics()
     if stopped or not C.SmartDive or not steerActive then return end
+    if protectNativeDive() then
+        stopSteering()
+        return
+    end
     local root,hum=character()
     if not root or not hum or hum.Health<=0 or root.Anchored then
         stopSteering()
@@ -2323,6 +2373,10 @@ Run:BindToRenderStep(smartDirectionalRender,
     Enum.RenderPriority.Input.Value+2,function()
         if stopped or not C.SmartDive or not steerActive
             or not smartMovementDir then return end
+        if protectNativeDive() then
+            stopSteering()
+            return
+        end
         local now=os.clock()
         if now>smartTimeout and not smartConfirmed then return end
         if now-smartTriggerAt>0.10 and not smartConfirmed
@@ -2775,8 +2829,8 @@ end
 links[#links+1]=exitButton.MouseButton1Click:Connect(function()
     stop('close')
 end)
-env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.29'}
-print('[VolleyBomb v9.29] Smart Dive v2.5: Main detectado pelo jogo, zonas renovadas e AutoPlayer desligado. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
+env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.30'}
+print('[VolleyBomb v9.30] Smart Dive v2.6: E nativo no saque proprio e Magnet; assistencia nas defesas. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
 ]=]
 
 local RUNNER = [==[
@@ -2784,11 +2838,11 @@ return function(expectedUniverse, core, runner)
     if not game:IsLoaded() then game.Loaded:Wait() end
     local universe = game.GameId
     if type(universe) ~= 'number' or universe == 0 then
-        warn('[VolleyBomb v9.29] Nao foi possivel reconhecer o universo do jogo.')
+        warn('[VolleyBomb v9.30] Nao foi possivel reconhecer o universo do jogo.')
         return
     end
     if expectedUniverse and expectedUniverse ~= universe then
-        warn('[VolleyBomb v9.29] Outro jogo detectado. Autoexecucao ignorada.')
+        warn('[VolleyBomb v9.30] Outro jogo detectado. Autoexecucao ignorada.')
         return
     end
     local replicated = game:GetService('ReplicatedStorage')
@@ -2799,7 +2853,7 @@ return function(expectedUniverse, core, runner)
     local ballState = net and (net:FindFirstChild('RE/BallState')
         or net:WaitForChild('RE/BallState', 25))
     if not ballState or not ballState:IsA('RemoteEvent') then
-        warn('[VolleyBomb v9.29] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
+        warn('[VolleyBomb v9.30] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
         return
     end
 
@@ -2850,26 +2904,26 @@ return function(expectedUniverse, core, runner)
     
     local compiled,err=loadstring(core)
     if not compiled then
-        warn('[VolleyBomb v9.29] Erro ao ler codigo principal: '..tostring(err))
+        warn('[VolleyBomb v9.30] Erro ao ler codigo principal: '..tostring(err))
         return
     end
     local ok,runtimeErr=pcall(compiled)
     if not ok then
-        warn('[VolleyBomb v9.29] Erro na execucao: '..tostring(runtimeErr))
+        warn('[VolleyBomb v9.30] Erro na execucao: '..tostring(runtimeErr))
         return
     end
 
     local current=environ.VolleyBombLanding
-    if type(current)~='table' or current.Version~='9.29' then return end
+    if type(current)~='table' or current.Version~='9.30' then return end
 
     
     
     current.CancelTeleport=function()
         local success,message=clearQueuedTeleports()
         if success then
-            print('[VolleyBomb v9.29] X: Auto-inicio desligado e fila de teleportes limpa.')
+            print('[VolleyBomb v9.30] X: Auto-inicio desligado e fila de teleportes limpa.')
         else
-            warn('[VolleyBomb v9.29] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
+            warn('[VolleyBomb v9.30] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
         end
         return success
     end
@@ -2878,12 +2932,12 @@ return function(expectedUniverse, core, runner)
     
     local cleared,why=clearQueuedTeleports()
     if not cleared then
-        warn('[VolleyBomb v9.29] Nao deu para limpar copias antigas: '..tostring(why))
+        warn('[VolleyBomb v9.30] Nao deu para limpar copias antigas: '..tostring(why))
     end
 
     local queue=getTeleportQueue()
     if not queue then
-        warn('[VolleyBomb v9.29] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
+        warn('[VolleyBomb v9.30] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
         return
     end
 
@@ -2893,28 +2947,28 @@ local core = %q
 local runner = %q
 local compiler, errorMessage = loadstring(runner)
 if not compiler then
-    warn('[VolleyBomb v9.29] Erro no auto-inicio: '..tostring(errorMessage))
+    warn('[VolleyBomb v9.30] Erro no auto-inicio: '..tostring(errorMessage))
 else
     local success, launch = pcall(compiler)
     if success and type(launch)=='function' then
         launch(expectedUniverse, core, runner)
     else
-        warn('[VolleyBomb v9.29] Auto-inicio indisponivel: '..tostring(launch))
+        warn('[VolleyBomb v9.30] Auto-inicio indisponivel: '..tostring(launch))
     end
 end
 ]=], universe, core, runner)
     local registered,queueErr=pcall(queue,queuedCode)
     if registered then
         environ.VolleyBombLandingTeleportQueued=
-            tostring(universe)..'/'..tostring(game.JobId)..'/v9.29'
-        print('[VolleyBomb v9.29] Auto-inicio preparado. X cancela o proximo servidor.')
+            tostring(universe)..'/'..tostring(game.JobId)..'/v9.30'
+        print('[VolleyBomb v9.30] Auto-inicio preparado. X cancela o proximo servidor.')
     else
-        warn('[VolleyBomb v9.29] Falha ao preparar proximo servidor: '..tostring(queueErr))
+        warn('[VolleyBomb v9.30] Falha ao preparar proximo servidor: '..tostring(queueErr))
     end
 end
 ]==]
 
 local compiled,err=loadstring(RUNNER)
-if not compiled then error('[VolleyBomb v9.29] Erro de inicializacao: '..tostring(err)) end
+if not compiled then error('[VolleyBomb v9.30] Erro de inicializacao: '..tostring(err)) end
 local start=compiled()
 start(nil,CORE,RUNNER)
