@@ -1253,8 +1253,7 @@ end
 
 local serveTechnique={
     MineUntil=0,
-    MagnetUntil=0,
-    LastSelfServeAt=-math.huge
+    MagnetUntil=0
 }
 -- O BallState replica o jogador que esta sacando no campo Server.
 -- Na transicao do saque para a bola em voo, Server some enquanto
@@ -1265,7 +1264,6 @@ local function updateServeTechnique(raw)
     local owner=raw.Server
     if owner==me then
         serveTechnique.MineUntil=now+10
-        serveTechnique.LastSelfServeAt=now
     elseif typeof(owner)=='Instance' and owner:IsA('Player') then
         serveTechnique.MineUntil=0
     elseif type(raw.Hits)=='number' and raw.Hits>=1 then
@@ -1280,13 +1278,14 @@ end
 local function protectNativeDive()
     local now=os.clock()
     local raw=states.Main and states.Main.Raw
-    if raw and raw.Magnet==me then return true end
-    if detectMode(true)~='Main' then return false end
-    if now<serveTechnique.MineUntil or now<serveTechnique.MagnetUntil then
-        return true
+    -- Quase todo frame pode retornar sem recalcular a arena, evitando
+    -- overhead em PCs de FPS baixo.
+    if now>=serveTechnique.MineUntil and now>=serveTechnique.MagnetUntil
+        and not (raw and (raw.Server==me or raw.Magnet==me)) then
+        return false
     end
-    if raw and raw.Server==me then return true end
-    return false
+    -- Nao bloqueia dives do Practice quando houver estado Main antigo.
+    return detectMode()=='Main'
 end
 
 -- Quick Look: usa o sacador fornecido diretamente pelo servidor em BallState.
