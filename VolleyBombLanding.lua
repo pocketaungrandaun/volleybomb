@@ -293,18 +293,22 @@ local function fpsBallOrImportant(inst)
     local camera=W.CurrentCamera
     if camera and inst:IsDescendantOf(camera) then return true end
 
-    -- Publico/rankeada: durante transicao o BallController pode
-    -- trocar o Part antes do InRound e da lista de Zones atualizarem.
-    -- Protege TODAS as bolas reais do cliente, nao so a arena atual.
-    if inst:IsA('BasePart') then
-        local n=fpsName(inst.Name)
-        if n=='bowling ball' or n=='default' or n=='ball'
-            or n=='volleyball' then return true end
+    -- Durante a transicao protege ambas as bolas. Quando a zona
+    -- estabiliza, so a da arena atual permanece obrigatoriamente
+    -- visivel (a outra pode ser ocultada com o resto do mapa).
+    local transitioning=not FPS.LastReady
+    local function nameMatches(n)
+        return n=='ball' or n=='volleyball'
+            or (n=='bowling ball' and (FPS.Mode=='Main' or transitioning))
+            or (n=='default' and (FPS.Mode=='Practice' or transitioning))
+    end
+    if inst:IsA('BasePart') and nameMatches(fpsName(inst.Name)) then
+        return true
     end
     local entries=ballController and ballController._balls
     if type(entries)=='table' then
-        for _,entry in pairs(entries) do
-            if type(entry)=='table' then
+        for arena,entry in pairs(entries) do
+            if (arena==FPS.Mode or transitioning) and type(entry)=='table' then
                 local core=entry.Part
                 if typeof(core)=='Instance' and core.Parent
                     and (inst==core or inst:IsDescendantOf(core)) then
@@ -316,12 +320,8 @@ local function fpsBallOrImportant(inst)
     local node=inst.Parent
     local depth=0
     while node and node~=W and depth<12 do
-        if node:IsA('BasePart') then
-            local n=fpsName(node.Name)
-            if n=='bowling ball' or n=='default'
-                or n=='ball' or n=='volleyball' then
-                return true
-            end
+        if node:IsA('BasePart') and nameMatches(fpsName(node.Name)) then
+            return true
         end
         node=node.Parent
         depth=depth+1
@@ -680,13 +680,16 @@ local function fpsExposeBalls()
     -- Verifica os dois BallController do jogo: na troca de mapa
     -- o Part antigo pode ficar invisivel antes da zona nova chegar.
     for _,arena in ipairs({'Main','Practice'}) do
-        local part=getTrackedBallPart(arena)
-        if part and part.Parent then fpsShow(part) end
+        if arena==FPS.Mode or not FPS.LastReady then
+            local part=getTrackedBallPart(arena)
+            if part and part.Parent then fpsShow(part) end
+        end
     end
     local entries=ballController and ballController._balls
     if type(entries)=='table' then
-        for _,entry in pairs(entries) do
-            if type(entry)=='table' then
+        for arena,entry in pairs(entries) do
+            if (arena==FPS.Mode or not FPS.LastReady)
+                and type(entry)=='table' then
                 local part=entry.Part
                 if typeof(part)=='Instance' and part:IsA('BasePart') then
                     fpsShow(part)
