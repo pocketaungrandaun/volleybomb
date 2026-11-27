@@ -1,4 +1,4 @@
--- VolleyBomb Enemy CD v9.46: show only while hovering another character.
+-- VolleyBomb Enemy CD v9.47: original icons + screen-space hover in matches.
 -- Read public announcements and available replicated ability metadata.
 -- Any unconfirmed countdown is marked approximate (~) or unknown (?).
 return function(ctx)
@@ -36,7 +36,21 @@ return function(ctx)
         'Ability','AbilityName','EquippedSkill','Skill','Power'
     }
     local statuses={}
-    local imageCache={}
+    -- IDs exatos: ReplicatedStorage.Data.Info.Abilities.<Skill>.Icon
+    -- Obtidos nos relatorios do proprio jogo (sem imagens aproximadas).
+    local icons={
+        adrenaline='rbxassetid://97944922227782',
+        frozen='rbxassetid://128928645067241',
+        superspike='rbxassetid://79222800577374',
+        magnet='rbxassetid://84541250301456',
+        curveball='rbxassetid://84135124919799',
+        forcefield='rbxassetid://85981316187333',
+        moonball='rbxassetid://90742590592196',
+        portal='rbxassetid://87889391982596',
+        shockwave='rbxassetid://113239369966635',
+        tornadoball='rbxassetid://117098264685504',
+        guardian='rbxassetid://116764589545815'
+    }
     local durationCache={}
     local ui=nil
     local abilityImage=nil
@@ -46,7 +60,6 @@ return function(ctx)
     local cdLabel=nil
     local lastMagnet=nil
     local nextUpdate=0
-    local nextImageScan=0
 
     local function canonical(value)
         if typeof(value)=='Instance' then value=value.Name end
@@ -58,137 +71,34 @@ return function(ctx)
     end
 
     local function modInfo(key)
-        if durationCache[key] then
-            return durationCache[key].Duration,durationCache[key].Image
-        end
+        local cached=durationCache[key]
+        if cached~=nil then return cached or nil end
         local shared=R:FindFirstChild('Shared')
         local modules=shared and shared:FindFirstChild('Modules')
         local folder=modules and modules:FindFirstChild('Abilities')
-        local mod=nil
+        local seconds=nil
         if folder then
             for _,child in ipairs(folder:GetChildren()) do
                 if child:IsA('ModuleScript') and canonical(child.Name)==key then
-                    mod=child
+                    local ok,data=pcall(require,child)
+                    if ok and type(data)=='table' then
+                        local cd=tonumber(data.Cooldown)
+                        local active=tonumber(data.Duration) or 0
+                        if cd and cd>0 and cd<=300
+                            and active>=0 and active<=120 then
+                            seconds=cd+active
+                        end
+                    end
                     break
                 end
             end
         end
-        local info={Duration=nil,Image=nil}
-        if mod then
-            local ok,data=pcall(require,mod)
-            if ok and type(data)=='table' then
-                local cd=tonumber(data.Cooldown)
-                local duration=tonumber(data.Duration) or 0
-                if cd and cd>0 and cd<=300
-                    and duration>=0 and duration<=60 then
-                    -- The visible game may use a different server rule.
-                    info.Duration=cd+duration
-                end
-                for _,field in ipairs({
-                    'Icon','IconId','Image','ImageId','Texture','TextureId'
-                }) do
-                    local candidate=data[field]
-                    if type(candidate)=='number' and candidate>0 then
-                        info.Image='rbxassetid://'..tostring(candidate)
-                        break
-                    elseif type(candidate)=='string' and candidate~='' then
-                        if candidate:match('^rbxassetid://%d+$')
-                            or candidate:match('^rbxasset://') then
-                            info.Image=candidate
-                            break
-                        elseif candidate:match('^%d+$') then
-                            info.Image='rbxassetid://'..candidate
-                            break
-                        end
-                    end
-                end
-            end
-        end
-        durationCache[key]=info
-        return info.Duration,info.Image
-    end
-
-    local function iconFromShop(key)
-        local gui=me:FindFirstChildOfClass('PlayerGui')
-        if not gui then return nil end
-        -- Game UI images use Roblox assets; they can be reused as-is.
-        -- The screenshot is a reference, not an uploaded Roblox decal.
-        local nodes=gui:GetDescendants()
-        local best=nil
-        for _,node in ipairs(nodes) do
-            -- O proprio HUD nao e fonte de imagem: evita reaproveitar
-            -- acidentalmente o icone do ultimo jogador observado.
-            if not node:FindFirstAncestor('VolleyBombLandingUI')
-                and (node:IsA('ImageLabel') or node:IsA('ImageButton'))
-                and node.Image~='' then
-                local match=nil
-                local parent=node
-                for _=1,3 do
-                    if not parent or parent==gui then break end
-                    local raw=string.lower(parent.Name):gsub('[^%w]','')
-                    if raw==key or raw==key..'icon' or raw==key..'card'
-                        or raw==key..'button' or raw==key..'image'
-                        or raw==key..'frame' then
-                        match=true
-                        break
-                    end
-                    parent=parent.Parent
-                end
-                if match then
-                    best=node.Image
-                    break
-                end
-            end
-        end
-        if best then return best end
-        -- If the shop names cards generically, find an exact skill
-        -- label and its neighboring ImageLabel.
-        for _,node in ipairs(nodes) do
-            if not node:FindFirstAncestor('VolleyBombLandingUI')
-                and (node:IsA('TextLabel') or node:IsA('TextButton'))
-                and canonical(node.Text)==key then
-                local parent=node.Parent
-                for _=1,2 do
-                    if not parent or parent==gui then break end
-                    for _,child in ipairs(parent:GetChildren()) do
-                        if (child:IsA('ImageLabel') or child:IsA('ImageButton'))
-                            and child.Image~='' then
-                            return child.Image
-                        end
-                        if child:IsA('Frame') then
-                            for _,icon in ipairs(child:GetChildren()) do
-                                if (icon:IsA('ImageLabel')
-                                    or icon:IsA('ImageButton'))
-                                    and icon.Image~='' then
-                                    return icon.Image
-                                end
-                            end
-                        end
-                    end
-                    parent=parent.Parent
-                end
-            end
-        end
-        return nil
+        durationCache[key]=seconds or false
+        return seconds
     end
 
     local function iconFor(key)
-        if not key then return nil end
-        if imageCache[key] then return imageCache[key] end
-        local _,moduleImage=modInfo(key)
-        if moduleImage then
-            imageCache[key]=moduleImage
-            return moduleImage
-        end
-        if os.clock()>=nextImageScan then
-            nextImageScan=os.clock()+2.5
-            local shopImage=iconFromShop(key)
-            if shopImage then
-                imageCache[key]=shopImage
-                return shopImage
-            end
-        end
-        return nil
+        return key and icons[key] or nil
     end
 
     local function abilityIn(node)
@@ -253,7 +163,12 @@ return function(ctx)
     local function notice(kind,message)
         if type(message)~='string' then return end
         if kind=='Master' and message:find('Shuffling',1,true) then
-            table.clear(statuses)
+            -- Round novo: guardamos a habilidade JA observada.
+            -- O servidor pode reiniciar CDs; nao carregar timer antigo.
+            for _,state in pairs(statuses) do
+                state.Ready=nil
+                state.RoundReset=true
+            end
             lastMagnet=nil
             return
         end
@@ -284,18 +199,61 @@ return function(ctx)
     end
 
     local function hoveredPlayer()
-        local hit=mouse.Target
-        if not hit or not hit.Parent then return nil end
-        local node=hit
+        -- Primeiro tenta o alvo fisico (melhor para lobby).
+        local node=mouse.Target
         for _=1,15 do
-            if not node or node==W then return nil end
-            if node:IsA('Model') and node:FindFirstChildOfClass('Humanoid') then
+            if not node or node==W then break end
+            if node:IsA('Model') then
                 local pl=P:GetPlayerFromCharacter(node)
                 if pl and pl~=me then return pl end
             end
             node=node.Parent
         end
-        return nil
+
+        -- Publica/Practice: Reflectables.Part e outros planos de
+        -- efeito atravessam o cursor, impedindo mouse.Target de
+        -- reconhecer avatar. Projeta o corpo do jogador na tela,
+        -- sem alterar CanQuery, camera, colisao ou partes do mapa.
+        local camera=W.CurrentCamera
+        if not camera then return nil end
+        local loc=U:GetMouseLocation()
+        local cursor=Vector2.new(loc.X,loc.Y)
+        local best=nil
+        local bestDist=math.huge
+        for _,pl in ipairs(P:GetPlayers()) do
+            if pl~=me and pl.Character then
+                local ch=pl.Character
+                local hum=ch:FindFirstChildOfClass('Humanoid')
+                local root=ch:FindFirstChild('HumanoidRootPart')
+                local head=ch:FindFirstChild('Head')
+                if root and hum and hum.Health>0 then
+                    local distance=(root.Position-camera.CFrame.Position).Magnitude
+                    if distance<=220 and distance>2 then
+                        local topPos=head and head.Position
+                            or root.Position+Vector3.new(0,2.2,0)
+                        local lower=root.Position-Vector3.new(0,2.5,0)
+                        local top,inTop=camera:WorldToViewportPoint(topPos)
+                        local bottom,inBottom=camera:WorldToViewportPoint(lower)
+                        if inTop and inBottom and top.Z>0 and bottom.Z>0 then
+                            local A=Vector2.new(top.X,top.Y)
+                            local B=Vector2.new(bottom.X,bottom.Y)
+                            local ab=B-A
+                            local square=ab:Dot(ab)
+                            local t=square>0.1
+                                and math.clamp((cursor-A):Dot(ab)/square,0,1) or 0
+                            local nearest=A+ab*t
+                            local delta=(cursor-nearest).Magnitude
+                            local halfWidth=math.clamp(12+680/distance,16,43)
+                            if delta<=halfWidth and delta<bestDist then
+                                bestDist=delta
+                                best=pl
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        return best
     end
 
     local function update()
@@ -319,9 +277,11 @@ return function(ctx)
             and last.Ready then
             local remaining=last.Ready-now
             countdown=remaining>0 and ('~'..math.ceil(remaining)..'s')
-                or 'PRONTO'
-        elseif skill=='guardian' or skill=='shockwave' then
-            countdown='PASSIVA'
+                or 'PRONTO*'
+        elseif skill=='guardian' then
+            countdown='1 USO/JOGO'
+        elseif skill=='shockwave' then
+            countdown='CD ?'
         end
 
         playerLabel.Text=pl.DisplayName
