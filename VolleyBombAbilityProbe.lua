@@ -48,7 +48,7 @@ local activeGui=nil
 local message=nil
 local sampleTime=0
 local snapshotTime=0
-local stopTime=os.clock()+150
+local stopTime=os.clock()+300
 
 local function errorLog(why)
     if #report.errors<40 then
@@ -381,8 +381,12 @@ local function hoverData()
         at=os.clock(),mouseLocation={x=math.floor(cursor.X),y=math.floor(cursor.Y)},
         behavior=tostring(U.MouseBehavior),
         targetNative=native and native:GetFullName() or nil,
+        targetNativeCanQuery=native and native:IsA('BasePart')
+            and native.CanQuery or nil,
         playerNative=playerFromPart(native) and playerFromPart(native).Name or nil,
         targetRaycast=hit and hit.Instance:GetFullName() or nil,
+        targetRaycastCanQuery=hit and hit.Instance:IsA('BasePart')
+            and hit.Instance.CanQuery or nil,
         playerRaycast=hit and playerFromPart(hit.Instance)
             and playerFromPart(hit.Instance).Name or nil,
         nearPlayers=nearby,
@@ -467,9 +471,20 @@ local function exportImages()
         if seen then
             for id in pairs(seen) do
                 count=count+1
-                if count>55 then break end
+                if count>35 then break end
                 local body,err=httpRequest('https://assetdelivery.roblox.com/v1/asset/?id='..id)
                 local extension=body and fileType(body) or nil
+                if body and not extension then
+                    -- Alguns endpoints devolvem JSON com o link CDN real.
+                    local ok,details=pcall(Http.JSONDecode,Http,body)
+                    local locations=ok and type(details)=='table' and details.locations
+                    local url=type(locations)=='table' and locations[1]
+                        and locations[1].location or nil
+                    if type(url)=='string' and url:match('^https://[%w%-%.]+%.rbxcdn%.com/') then
+                        body,err=httpRequest(url)
+                        extension=body and fileType(body) or nil
+                    end
+                end
                 if extension then
                     local name=folder..'/'..skill..'_'..id..'.'..extension
                     local ok,werr=pcall(writefile,name,body)
@@ -480,9 +495,10 @@ local function exportImages()
                     files[#files+1]={ability=skill,assetId=id,saved=false,
                         reason=err or 'Asset Delivery returned non-image, maybe JSON/redirect'}
                 end
+                if count%3==0 then task.wait(0.08) end
             end
         end
-        if count>55 then break end
+        if count>35 then break end
     end
     report.files=files
 end
