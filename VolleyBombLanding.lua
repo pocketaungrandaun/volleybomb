@@ -250,7 +250,8 @@ local protectedNames={
     'trigger','hitbox','collider','collision','checkpoint',
     'lobbyedgewall','ballshadow','ballindicator','indicator',
     'balltrail','ballwind','windtrail','volleyball','projectile',
-    'bump','swing','dive','serve','ballvfx'
+    'bump','swing','dive','serve','ballvfx',
+    'impact','shockwave','ballhit','windfx'
 }
 local decorNames={
     'leaderboard','leader board','topwins','topplayers','rankboard',
@@ -379,22 +380,24 @@ local function fpsShouldHide(part)
     if not part.Anchored then return false end
     if part.Transparency>=0.95 then return false end
     if fpsBallOrImportant(part) or fpsCharacter(part) then return false end
-    if fpsWalkable(part) then return false end
     local mode=FPS.Mode
     if fpsInsideCurrentArena(part,mode) then return false end
     local decorative=fpsDecor(part)
     local lobby=fpsInLobbyHierarchy(part)
     if mode=='Lobby' then
-        -- No lobby, reduz cenografia sem remover pisos e infraestrutura.
-        return decorative
+        -- No lobby, preserva pisos e infraestrutura; so reduz cenografia.
+        return decorative and not fpsWalkable(part)
     end
     if (mode=='Main' or mode=='Practice') and fpsHasZones(mode) then
-        -- Fora da arena ativa: so o visual local e ocultado.
-        -- Colisao, raycasts, sons e texturas permanecem como no jogo.
+        -- O mapa fora da arena ativa pode ter pisos e paredes:
+        -- ocultamos apenas seus visuais, SEM retirar colisoes nem texturas.
+        -- Estruturas gigantes compartilhadas pelo mapa sao mantidas.
+        local size=part.Size
+        if math.max(size.X,size.Z)>140 then return false end
         return true
     end
-    -- Sem informacao confiavel da arena: nao arriscar apagar a quadra.
-    return decorative and lobby
+    -- Sem zonas confiaveis, protege superficies estruturais da partida.
+    return decorative and lobby and not fpsWalkable(part)
 end
 
 local function fpsHide(part)
