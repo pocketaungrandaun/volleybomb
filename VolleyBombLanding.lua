@@ -245,8 +245,7 @@ end
 
 
 local function predictionCast(origin,direction,p,castRadius)
-    -- Fisica original do mapa: nao ignora objetos com transparencia
-    -- alterada por versoes antigas do Optimizer.
+    -- Usa a fisica normal do mapa, sem filtros de visibilidade locais.
     local ok,hit=pcall(function()
         if castRadius then
             return W:Spherecast(origin,castRadius,direction,p)
@@ -2454,7 +2453,7 @@ links[#links+1]=exitButton.MouseButton1Click:Connect(function()
     stop('close')
 end)
 env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.38'}
-print('[VolleyBomb v9.38] Optimizer removido. Smart Dive, Indicator, Quick Look, Touchs e Fake Shift preservados. Corte: '..C.SpikeKey..'. Config: '..saveLocation)
+print('[VolleyBomb v9.38] Smart Dive, Indicator, Quick Look, Touchs e Fake Shift. Corte: '..C.SpikeKey..'. Config: '..saveLocation)
 ]=]
 
 local RUNNER = [==[
