@@ -47,7 +47,7 @@ local hasV65Preferences=false
 
 local function loadSettings(data)
     if type(data)~='table' then return end
-    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' or data.Version=='9.17' or data.Version=='9.18' or data.Version=='9.19' or data.Version=='9.20' or data.Version=='9.21' or data.Version=='9.22' or data.Version=='9.23' or data.Version=='9.24' or data.Version=='9.25' or data.Version=='9.26' or data.Version=='9.27' or data.Version=='9.28' or data.Version=='9.29' or data.Version=='9.30' or data.Version=='9.31' or data.Version=='9.32' or data.Version=='9.33' or data.Version=='9.34' or data.Version=='9.35' or data.Version=='9.36' then hasV65Preferences=true end
+    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' or data.Version=='9.17' or data.Version=='9.18' or data.Version=='9.19' or data.Version=='9.20' or data.Version=='9.21' or data.Version=='9.22' or data.Version=='9.23' or data.Version=='9.24' or data.Version=='9.25' or data.Version=='9.26' or data.Version=='9.27' or data.Version=='9.28' or data.Version=='9.29' or data.Version=='9.30' or data.Version=='9.31' or data.Version=='9.32' or data.Version=='9.33' or data.Version=='9.34' or data.Version=='9.35' or data.Version=='9.36' or data.Version=='9.37' then hasV65Preferences=true end
     for _,key in ipairs(savedKeys) do
         local value=data[key]
         if key=='DiveLead' then
@@ -108,7 +108,7 @@ C.Practice=true
 C.SteerDive=true
 
 local function saveSettings()
-    local data={Version='9.36',UI={}}
+    local data={Version='9.37',UI={}}
     for _,key in ipairs(savedKeys) do data[key]=C[key] end
     for _,key in ipairs({'IconX','IconY','PanelX','PanelY'}) do
         data.UI[key]=uiPrefs[key]
@@ -212,7 +212,7 @@ local FPS={
     Enabled=false,Generation=0,Revision=0,
     Originals={},HiddenOriginals={},
     Seen=setmetatable({},{__mode='k'}),
-    Mode='Lobby',LastRevision=-1,
+    Mode='Lobby',LastRevision=-1,LastReady=nil,
     ZoneList=nil,GetMode=nil,IsArenaPoint=nil,
     Processed=0,Hidden=0
 }
@@ -289,22 +289,41 @@ end
 
 local function fpsBallOrImportant(inst)
     if inst==folder or inst:IsDescendantOf(folder) then return true end
-    if W.CurrentCamera and inst:IsDescendantOf(W.CurrentCamera) then
-        return true
+    local camera=W.CurrentCamera
+    if camera and inst:IsDescendantOf(camera) then return true end
+
+    -- Publico/rankeada: durante transicao o BallController pode
+    -- trocar o Part antes do InRound e da lista de Zones atualizarem.
+    -- Protege TODAS as bolas reais do cliente, nao so a arena atual.
+    if inst:IsA('BasePart') then
+        local n=fpsName(inst.Name)
+        if n=='bowling ball' or n=='default' or n=='ball'
+            or n=='volleyball' then return true end
     end
-    -- Protege SOMENTE a bola da arena ativa, e nao NPCs com
-    -- nomes Ball / modelos decorativos do lobby.
-    local ballName=FPS.Mode=='Main' and 'Bowling Ball'
-        or (FPS.Mode=='Practice' and 'Default' or nil)
-    if ballName then
-        local actual=W:FindFirstChild(ballName)
-        if actual and (inst==actual or inst:IsDescendantOf(actual)) then
-            return true
+    local entries=ballController and ballController._balls
+    if type(entries)=='table' then
+        for _,entry in pairs(entries) do
+            if type(entry)=='table' then
+                local core=entry.Part
+                if typeof(core)=='Instance' and core.Parent
+                    and (inst==core or inst:IsDescendantOf(core)) then
+                    return true
+                end
+            end
         end
-        local tracked=getTrackedBallPart(FPS.Mode)
-        if tracked and (inst==tracked or inst:IsDescendantOf(tracked)) then
-            return true
+    end
+    local node=inst.Parent
+    local depth=0
+    while node and node~=W and depth<12 do
+        if node:IsA('BasePart') then
+            local n=fpsName(node.Name)
+            if n=='bowling ball' or n=='default'
+                or n=='ball' or n=='volleyball' then
+                return true
+            end
         end
+        node=node.Parent
+        depth=depth+1
     end
     return false
 end
@@ -344,6 +363,30 @@ local function fpsHasZones(mode)
     for _,zone in ipairs(list) do
         if typeof(zone)=='Instance' and zone:IsA('BasePart') and zone.Parent then
             return true
+        end
+    end
+    return false
+end
+
+-- A arena so esta pronta para isolamento quando o proprio jogador
+-- ja esta proximo das Zones atuais. Evita ocultar o mapa novo
+-- enquanto o servidor esta movendo personagem/bola para outra quadra.
+local function fpsArenaReady(mode)
+    if mode~='Main' and mode~='Practice' then return true end
+    if not fpsHasZones(mode) then return false end
+    local ch=me.Character
+    local root=ch and ch:FindFirstChild('HumanoidRootPart')
+    if not root then return false end
+    local pos=root.Position
+    local list=FPS.ZoneList(mode)
+    for _,z in ipairs(list) do
+        if typeof(z)=='Instance' and z:IsA('BasePart') and z.Parent then
+            local p=z.CFrame:PointToObjectSpace(pos)
+            if math.abs(p.X)<=z.Size.X*0.5+22
+                and math.abs(p.Z)<=z.Size.Z*0.5+22
+                and math.abs(p.Y)<=95 then
+                return true
+            end
         end
     end
     return false
@@ -437,13 +480,19 @@ local function fpsShouldHide(part)
     end
     local mode=FPS.Mode
     if mode=='Main' or mode=='Practice' then
-        -- Durante partida, APENAS os objetos dentro da zona atual
-        -- ficam visiveis. Inclui pisos/paredes remotos e jogadores do
-        -- lobby; nao faz excecao para itens grandes ou nomes genericos.
+        -- Durante troca da quadra ainda nao sabemos o limite correto.
+        -- Nao esconder nada ate Main/Practice ter Zones e jogador
+        -- sincronizados. Prioriza a bola e o Indicator sem atraso.
+        if not FPS.LastReady then return false end
+        -- Outros objetos moveis (bolas/skills) nao devem ser cacheados
+        -- como invisiveis por estarem fora do local de spawn.
+        -- So NPC/jogadores de outras arenas podem ser ocultados.
+        if not part.Anchored and not fpsCharacter(part) then
+            return false
+        end
         return not fpsInsideCurrentArena(part,mode)
     end
-    -- Lobby: limpeza conservadora. Nunca oculta construcao, piso,
-    -- parede, jogadores ou UI funcional; so decor explicitamente nomeado.
+    -- No lobby: somente cenografia explicitamente nomeada.
     if not part.Anchored or fpsCharacter(part) then return false end
     if fpsWalkable(part) then return false end
     return fpsDecor(part)
@@ -458,6 +507,25 @@ local function fpsHide(part)
         FPS.Hidden=FPS.Hidden+1
     end
 end
+
+local function fpsShow(part)
+    local old=FPS.HiddenOriginals[part]
+    if old==nil then return end
+    pcall(function()
+        if part and part.Parent then part.LocalTransparencyModifier=old end
+    end)
+    FPS.HiddenOriginals[part]=nil
+end
+local function fpsRestoreEnabled(inst)
+    local props=FPS.Originals[inst]
+    if not props or props.Enabled==nil then return end
+    local old=props.Enabled
+    pcall(function()
+        if inst and inst.Parent then inst.Enabled=old end
+    end)
+    props.Enabled=nil
+end
+
 
 local function fpsWorldPart(inst)
     if inst:IsA('BillboardGui') or inst:IsA('SurfaceGui')
@@ -488,41 +556,52 @@ local function fpsProcess(inst)
 
     if inst:IsA('BasePart') then
         fpsChange(inst,'CastShadow',false)
-        if fpsShouldHide(inst) then fpsHide(inst) end
+        if fpsShouldHide(inst) then
+            fpsHide(inst)
+        else
+            -- Objetos recem-admitidos na quadra atual voltam
+            -- imediatamente, inclusive a bola na troca de round.
+            fpsShow(inst)
+        end
         return
     end
 
-    -- Efeitos das bolas, Magnet e demais habilidades NUNCA sao
-    -- desativados por tipo; apenas cenografia nomeada do lobby.
+    -- Trilha, contorno, Magnet e habilidades: jamais desliga por classe.
     if heavyEffectNames[inst.ClassName] then
-        if inst:IsA('Highlight') or fpsGameplayEffect(inst) then return end
+        if inst:IsA('Highlight') or fpsGameplayEffect(inst) then
+            fpsRestoreEnabled(inst)
+            return
+        end
+        local hide=false
         if fpsDecor(inst) and not fpsBallOrImportant(inst)
             and not fpsCharacter(inst) then
             local host=fpsWorldPart(inst)
-            local hide=(FPS.Mode=='Lobby' and fpsInLobbyHierarchy(inst))
+            hide=(FPS.Mode=='Lobby' and fpsInLobbyHierarchy(inst))
                 or (FPS.Mode~='Lobby' and host
-                    and fpsShouldHide(host))
-            if hide then fpsChange(inst,'Enabled',false) end
+                    and fpsShouldHide(host)) or false
         end
+        if hide then fpsChange(inst,'Enabled',false)
+        else fpsRestoreEnabled(inst) end
         return
     end
 
-    -- UI 3D: oculta placares/placas de outras areas, sem tocar
-    -- no HUD dos jogadores ou nos indicadores do script.
     if inst:IsA('BillboardGui') or inst:IsA('SurfaceGui') then
         local host=fpsWorldPart(inst)
+        local hide=false
         if FPS.Mode=='Lobby' then
-            if fpsInLobbyHierarchy(inst) and fpsDecor(inst)
-                and not fpsBallOrImportant(inst) then
-                fpsChange(inst,'Enabled',false)
-            end
-        elseif host and fpsShouldHide(host) then
-            fpsChange(inst,'Enabled',false)
+            hide=fpsInLobbyHierarchy(inst) and fpsDecor(inst)
+                and not fpsBallOrImportant(inst)
+        elseif host then
+            hide=fpsShouldHide(host)
         end
+        if hide then fpsChange(inst,'Enabled',false)
+        else fpsRestoreEnabled(inst) end
     elseif inst:IsA('ProximityPrompt') then
         local host=fpsWorldPart(inst)
         if FPS.Mode~='Lobby' and host and fpsShouldHide(host) then
             fpsChange(inst,'Enabled',false)
+        else
+            fpsRestoreEnabled(inst)
         end
     end
 end
@@ -541,6 +620,26 @@ local function fpsApplyWorldSettings()
 end
 
 local function fpsScan(generation)
+    -- PRIMEIRA PASSAGEM: liberar tudo que ja estava oculto mas passou
+    -- a pertencer a arena nova. Nao esperar varrer o mapa inteiro.
+    local started=os.clock()
+    local checked=0
+    for part in pairs(FPS.HiddenOriginals) do
+        if stopped or not FPS.Enabled or FPS.Generation~=generation then
+            return
+        end
+        if not part or not part.Parent or not fpsShouldHide(part) then
+            fpsShow(part)
+        end
+        checked=checked+1
+        if checked%140==0 and os.clock()-started>0.006 then
+            task.wait()
+            started=os.clock()
+        end
+    end
+
+    -- SEGUNDA PASSAGEM: remover visual das areas distantes em blocos
+    -- pequenos para nao travar o Indicator quando o mapa troca.
     local list=W:GetDescendants()
     local lastYield=os.clock()
     for i,inst in ipairs(list) do
@@ -548,7 +647,7 @@ local function fpsScan(generation)
             return
         end
         fpsProcess(inst)
-        if i%220==0 and os.clock()-lastYield>0.012 then
+        if i%160==0 and os.clock()-lastYield>0.006 then
             task.wait()
             lastYield=os.clock()
         end
@@ -580,15 +679,18 @@ local function fpsRefresh(force)
     if not FPS.Enabled then return end
     local mode=FPS.GetMode and FPS.GetMode() or 'Lobby'
     local revision=FPS.Revision
-    if not force and mode==FPS.Mode and revision==FPS.LastRevision then
-        return
-    end
+    local ready=fpsArenaReady(mode)
+    if not force and mode==FPS.Mode and revision==FPS.LastRevision
+        and ready==FPS.LastReady then return end
+
     FPS.Generation=FPS.Generation+1
     local generation=FPS.Generation
-    fpsRestore()
+    -- Nao restaurar TODAS as sombras/efeitos e reaplicar de novo a cada
+    -- round. Isso causava travamentos, cache stale e indicador atrasado.
     FPS.Mode=mode
     FPS.LastRevision=revision
-    fpsApplyWorldSettings()
+    FPS.LastReady=ready
+    FPS.Seen=setmetatable({},{__mode='k'})
     task.spawn(function() fpsScan(generation) end)
 end
 
@@ -597,6 +699,7 @@ fpsSetEnabled=function(enabled)
     if FPS.Enabled==enabled then return end
     FPS.Enabled=enabled
     if enabled then
+        fpsApplyWorldSettings()
         fpsRefresh(true)
     else
         FPS.Generation=FPS.Generation+1
@@ -607,7 +710,7 @@ end
 -- Renderiza/desrenderiza jogadores que entram/saem da arena ativa,
 -- sem rescans a cada frame. Nunca altera colisoes ou movimentos.
 local function fpsSyncPlayers()
-    if FPS.Mode~='Main' and FPS.Mode~='Practice' then return end
+    if not FPS.LastReady or (FPS.Mode~='Main' and FPS.Mode~='Practice') then return end
     for _,pl in ipairs(P:GetPlayers()) do
         local model=pl.Character
         if model then
@@ -635,7 +738,7 @@ end
 links[#links+1]=Run.Heartbeat:Connect(function()
     if stopped or not FPS.Enabled then return end
     local now=os.clock()
-    if now-fpsLastCheck>=0.65 then
+    if now-fpsLastCheck>=0.18 then
         fpsLastCheck=now
         fpsRefresh(false)
         fpsSyncPlayers()
@@ -2934,8 +3037,8 @@ end
 links[#links+1]=exitButton.MouseButton1Click:Connect(function()
     stop('close')
 end)
-env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.36'}
-print('[VolleyBomb v9.36] Optimizer isolando arena atual, preservando VFX e texturas. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
+env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.37'}
+print('[VolleyBomb v9.37] Optimizer sem delay no switch: bola/arena protegidas e render por etapas. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
 ]=]
 
 local RUNNER = [==[
@@ -2943,11 +3046,11 @@ return function(expectedUniverse, core, runner)
     if not game:IsLoaded() then game.Loaded:Wait() end
     local universe = game.GameId
     if type(universe) ~= 'number' or universe == 0 then
-        warn('[VolleyBomb v9.36] Nao foi possivel reconhecer o universo do jogo.')
+        warn('[VolleyBomb v9.37] Nao foi possivel reconhecer o universo do jogo.')
         return
     end
     if expectedUniverse and expectedUniverse ~= universe then
-        warn('[VolleyBomb v9.36] Outro jogo detectado. Autoexecucao ignorada.')
+        warn('[VolleyBomb v9.37] Outro jogo detectado. Autoexecucao ignorada.')
         return
     end
     local replicated = game:GetService('ReplicatedStorage')
@@ -2958,7 +3061,7 @@ return function(expectedUniverse, core, runner)
     local ballState = net and (net:FindFirstChild('RE/BallState')
         or net:WaitForChild('RE/BallState', 25))
     if not ballState or not ballState:IsA('RemoteEvent') then
-        warn('[VolleyBomb v9.36] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
+        warn('[VolleyBomb v9.37] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
         return
     end
 
@@ -3009,26 +3112,26 @@ return function(expectedUniverse, core, runner)
     
     local compiled,err=loadstring(core)
     if not compiled then
-        warn('[VolleyBomb v9.36] Erro ao ler codigo principal: '..tostring(err))
+        warn('[VolleyBomb v9.37] Erro ao ler codigo principal: '..tostring(err))
         return
     end
     local ok,runtimeErr=pcall(compiled)
     if not ok then
-        warn('[VolleyBomb v9.36] Erro na execucao: '..tostring(runtimeErr))
+        warn('[VolleyBomb v9.37] Erro na execucao: '..tostring(runtimeErr))
         return
     end
 
     local current=environ.VolleyBombLanding
-    if type(current)~='table' or current.Version~='9.36' then return end
+    if type(current)~='table' or current.Version~='9.37' then return end
 
     
     
     current.CancelTeleport=function()
         local success,message=clearQueuedTeleports()
         if success then
-            print('[VolleyBomb v9.36] X: Auto-inicio desligado e fila de teleportes limpa.')
+            print('[VolleyBomb v9.37] X: Auto-inicio desligado e fila de teleportes limpa.')
         else
-            warn('[VolleyBomb v9.36] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
+            warn('[VolleyBomb v9.37] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
         end
         return success
     end
@@ -3037,12 +3140,12 @@ return function(expectedUniverse, core, runner)
     
     local cleared,why=clearQueuedTeleports()
     if not cleared then
-        warn('[VolleyBomb v9.36] Nao deu para limpar copias antigas: '..tostring(why))
+        warn('[VolleyBomb v9.37] Nao deu para limpar copias antigas: '..tostring(why))
     end
 
     local queue=getTeleportQueue()
     if not queue then
-        warn('[VolleyBomb v9.36] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
+        warn('[VolleyBomb v9.37] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
         return
     end
 
@@ -3052,28 +3155,28 @@ local core = %q
 local runner = %q
 local compiler, errorMessage = loadstring(runner)
 if not compiler then
-    warn('[VolleyBomb v9.36] Erro no auto-inicio: '..tostring(errorMessage))
+    warn('[VolleyBomb v9.37] Erro no auto-inicio: '..tostring(errorMessage))
 else
     local success, launch = pcall(compiler)
     if success and type(launch)=='function' then
         launch(expectedUniverse, core, runner)
     else
-        warn('[VolleyBomb v9.36] Auto-inicio indisponivel: '..tostring(launch))
+        warn('[VolleyBomb v9.37] Auto-inicio indisponivel: '..tostring(launch))
     end
 end
 ]=], universe, core, runner)
     local registered,queueErr=pcall(queue,queuedCode)
     if registered then
         environ.VolleyBombLandingTeleportQueued=
-            tostring(universe)..'/'..tostring(game.JobId)..'/v9.36'
-        print('[VolleyBomb v9.36] Auto-inicio preparado. X cancela o proximo servidor.')
+            tostring(universe)..'/'..tostring(game.JobId)..'/v9.37'
+        print('[VolleyBomb v9.37] Auto-inicio preparado. X cancela o proximo servidor.')
     else
-        warn('[VolleyBomb v9.36] Falha ao preparar proximo servidor: '..tostring(queueErr))
+        warn('[VolleyBomb v9.37] Falha ao preparar proximo servidor: '..tostring(queueErr))
     end
 end
 ]==]
 
 local compiled,err=loadstring(RUNNER)
-if not compiled then error('[VolleyBomb v9.36] Erro de inicializacao: '..tostring(err)) end
+if not compiled then error('[VolleyBomb v9.37] Erro de inicializacao: '..tostring(err)) end
 local start=compiled()
 start(nil,CORE,RUNNER)
