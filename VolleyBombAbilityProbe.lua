@@ -522,9 +522,15 @@ local function save(exportPNG)
     report.savedAt=os.date('!%Y-%m-%dT%H:%M:%SZ')
     local ok,json=pcall(Http.JSONEncode,Http,report)
     if not ok then errorLog('JSONEncode: '..tostring(json)) return end
-    local filename=filePrefix..'_LATEST.json'
+    local arena=me:GetAttribute('InRound')
+    local mode=arena=='Main' and 'Main'
+        or (arena=='Practice' and 'Practice' or 'Lobby')
+    local job=tostring(game.JobId):gsub('[^%w]',''):sub(1,8)
+    if job=='' then job='Unknown' end
+    local filename=filePrefix..'_'..mode..'_'..job..'.json'
     if type(writefile)=='function' then
         local success,err=pcall(writefile,filename,json)
+        pcall(writefile,filePrefix..'_LATEST.json',json)
         if success then
             status('SALVO '..filename..' | F6 escanear | F7 salvar')
         else
