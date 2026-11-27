@@ -288,6 +288,12 @@ local function fpsCharacter(inst)
     return false
 end
 
+local function fpsBallNameMatches(n,transitioning)
+    return n=='ball' or n=='volleyball'
+        or (n=='bowling ball' and (FPS.Mode=='Main' or transitioning))
+        or (n=='default' and (FPS.Mode=='Practice' or transitioning))
+end
+
 local function fpsBallOrImportant(inst)
     if inst==folder or inst:IsDescendantOf(folder) then return true end
     local camera=W.CurrentCamera
@@ -297,12 +303,8 @@ local function fpsBallOrImportant(inst)
     -- estabiliza, so a da arena atual permanece obrigatoriamente
     -- visivel (a outra pode ser ocultada com o resto do mapa).
     local transitioning=not FPS.LastReady
-    local function nameMatches(n)
-        return n=='ball' or n=='volleyball'
-            or (n=='bowling ball' and (FPS.Mode=='Main' or transitioning))
-            or (n=='default' and (FPS.Mode=='Practice' or transitioning))
-    end
-    if inst:IsA('BasePart') and nameMatches(fpsName(inst.Name)) then
+    if inst:IsA('BasePart')
+        and fpsBallNameMatches(fpsName(inst.Name),transitioning) then
         return true
     end
     local entries=ballController and ballController._balls
@@ -320,7 +322,8 @@ local function fpsBallOrImportant(inst)
     local node=inst.Parent
     local depth=0
     while node and node~=W and depth<12 do
-        if node:IsA('BasePart') and nameMatches(fpsName(node.Name)) then
+        if node:IsA('BasePart')
+            and fpsBallNameMatches(fpsName(node.Name),transitioning) then
             return true
         end
         node=node.Parent
