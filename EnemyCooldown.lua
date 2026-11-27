@@ -198,6 +198,49 @@ return function(ctx)
         end
     end
 
+    -- Alguns usos (inclusive passivas) geram efeitos replicados
+    -- sem o texto "... used ... ability" da notificacao de rodada.
+    -- So registra quando um jogador E uma habilidade conhecidos
+    -- aparecem juntos no mesmo evento; nao inventa o dono.
+    local function observeEffect(...)
+        local who=nil
+        local skill=nil
+        local n=select('#',...)
+        for i=1,math.min(n,6) do
+            local arg=select(i,...)
+            if type(arg)=='string' then
+                skill=skill or canonical(arg)
+            elseif typeof(arg)=='Instance' then
+                if arg:IsA('Player') then
+                    who=who or arg
+                else
+                    local node=arg
+                    for _=1,8 do
+                        if not node or node==W then break end
+                        if node:IsA('Model') then
+                            local player=P:GetPlayerFromCharacter(node)
+                            if player then who=who or player break end
+                        end
+                        node=node.Parent
+                    end
+                end
+            elseif type(arg)=='table' then
+                for _,key in ipairs({'Ability','Skill','Name','Effect'}) do
+                    skill=skill or canonical(arg[key])
+                end
+                local candidate=arg.Player or arg.Character
+                if typeof(candidate)=='Instance' then
+                    if candidate:IsA('Player') then
+                        who=who or candidate
+                    elseif candidate:IsA('Model') then
+                        who=who or P:GetPlayerFromCharacter(candidate)
+                    end
+                end
+            end
+        end
+        if who and skill then record(who,skill) end
+    end
+
     local function hoveredPlayer()
         -- Primeiro tenta o alvo fisico (melhor para lobby).
         local node=mouse.Target
@@ -279,7 +322,8 @@ return function(ctx)
             countdown=remaining>0 and ('~'..math.ceil(remaining)..'s')
                 or 'PRONTO*'
         elseif skill=='guardian' then
-            countdown='1 USO/JOGO'
+            countdown=(last and last.Player==pl and last.Skill=='guardian'
+                and not last.RoundReset) and 'USADA' or '1 USO/JOGO'
         elseif skill=='shockwave' then
             countdown='CD ?'
         end
@@ -365,6 +409,20 @@ return function(ctx)
             TextColor3=Color3.fromRGB(183,239,202),
             Text='',ZIndex=50
         },ui)
+        -- RE/AttachFX e RE/PassiveUsed podem revelar habilidades
+        -- mesmo quando RoundNotification nao anuncia a ativacao.
+        local packages=R:FindFirstChild('Packages')
+        local net=packages and packages:FindFirstChild('Net')
+        if net then
+            for _,remoteName in ipairs({'RE/AttachFX','RE/PassiveUsed'}) do
+                local remote=net:FindFirstChild(remoteName)
+                if remote and remote:IsA('RemoteEvent') then
+                    links[#links+1]=remote.OnClientEvent:Connect(function(...)
+                        if not ctx.IsStopped() then observeEffect(...) end
+                    end)
+                end
+            end
+        end
         links[#links+1]=Run.Heartbeat:Connect(function()
             if ctx.IsStopped() or not ui or not ui.Parent
                 or os.clock()<nextUpdate then return end
