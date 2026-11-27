@@ -676,6 +676,26 @@ fpsRestore=function()
     FPS.Hidden=0
 end
 
+local function fpsExposeBalls()
+    -- Verifica os dois BallController do jogo: na troca de mapa
+    -- o Part antigo pode ficar invisivel antes da zona nova chegar.
+    for _,arena in ipairs({'Main','Practice'}) do
+        local part=getTrackedBallPart(arena)
+        if part and part.Parent then fpsShow(part) end
+    end
+    local entries=ballController and ballController._balls
+    if type(entries)=='table' then
+        for _,entry in pairs(entries) do
+            if type(entry)=='table' then
+                local part=entry.Part
+                if typeof(part)=='Instance' and part:IsA('BasePart') then
+                    fpsShow(part)
+                end
+            end
+        end
+    end
+end
+
 local function fpsRefresh(force)
     if not FPS.Enabled then return end
     local mode=FPS.GetMode and FPS.GetMode() or 'Lobby'
@@ -711,26 +731,6 @@ end
 
 -- Renderiza/desrenderiza jogadores que entram/saem da arena ativa,
 -- sem rescans a cada frame. Nunca altera colisoes ou movimentos.
-local function fpsExposeBalls()
-    -- Verifica os dois BallController do jogo: na troca de mapa
-    -- o Part antigo pode ficar invisivel antes da zona nova chegar.
-    for _,arena in ipairs({'Main','Practice'}) do
-        local part=getTrackedBallPart(arena)
-        if part and part.Parent then fpsShow(part) end
-    end
-    local entries=ballController and ballController._balls
-    if type(entries)=='table' then
-        for _,entry in pairs(entries) do
-            if type(entry)=='table' then
-                local part=entry.Part
-                if typeof(part)=='Instance' and part:IsA('BasePart') then
-                    fpsShow(part)
-                end
-            end
-        end
-    end
-end
-
 local function fpsSyncPlayers()
     if not FPS.LastReady or (FPS.Mode~='Main' and FPS.Mode~='Practice') then return end
     for _,pl in ipairs(P:GetPlayers()) do
