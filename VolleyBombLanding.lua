@@ -328,7 +328,8 @@ local function detectMode(force)
                     local dz=math.max(0,math.abs(localPos.Z)-zone.Size.Z/2)
                     local distance=math.sqrt(dx*dx+dz*dz)
                     
-                    if distance<bestDist and distance<=12 then
+                    local tolerance=(arena=='Main' and 23 or 12)
+                    if distance<bestDist and distance<=tolerance then
                         chosen=arena
                         bestDist=distance
                     end
@@ -664,12 +665,14 @@ local function predictFloorAfterBounce(raw,arena,hitPoint,hitNormal,hitVelocity,
     return nil
 end
 
-local function zoneAt(list,point)
+local function zoneAt(list,point,margin)
     local chosen,smallest=nil,math.huge
+    local padding=margin or 1
     for _,z in ipairs(list) do
         if z.Parent then
             local p=z.CFrame:PointToObjectSpace(point)
-            if math.abs(p.X)<=z.Size.X/2+1 and math.abs(p.Z)<=z.Size.Z/2+1 then
+            if math.abs(p.X)<=z.Size.X/2+padding
+                and math.abs(p.Z)<=z.Size.Z/2+padding then
                 local size=z.Size.X*z.Size.Z
                 if size<smallest then chosen,smallest=z,size end
             end
@@ -691,12 +694,13 @@ local function floorAt(point)
 end
 local function ownSide(s,root)
     local impact=zoneAt(s.Zones,s.Point)
-    local mine=zoneAt(s.Zones,root.Position)
+    local mine=zoneAt(s.Zones,root.Position,3.5)
 
-    -- Em Main as zonas sao atualizadas entre rounds. A antiga tabela
-    -- 'owned' pode apontar para Parts que ja nao pertencem a rodada.
-    -- A referencia atual de s.Zones deve ter prioridade.
+    -- Na publica/rankeada, a zona do round anterior nao e prova
+    -- de que a bola atual caira do nosso lado. Sem zona atual
+    -- confirmada, nao interfere no dive original.
     if impact and mine then return impact==mine end
+    if s.Arena=='Main' then return false end
     if not impact then return false end
     if next(owned[s.Arena])~=nil then
         for zone in pairs(owned[s.Arena]) do
@@ -890,13 +894,15 @@ Run:BindToRenderStep(cameraServeBind,Enum.RenderPriority.Camera.Value+15,functio
     cancelServeCamera()
 end)
 
-links[#links+1]=event.OnClientEvent:Connect(function(raw)
+local function ingestBallState(raw)
     if stopped or type(raw)~='table' then return end
     local arena=raw.Arena
     if not markers[arena] then return end
     if type(raw.Time)~='number' or type(raw.EndTime)~='number' then return end
     local oldState=states[arena]
-    if oldState and raw.Time<oldState.Time then return end
+    if oldState and (oldState.Raw==raw or raw.Time<oldState.Time) then
+        return
+    end
     local magnetTrack=liveTracks[arena]
     if magnetTrack then
         local hadMagnet=magnetTrack.MagnetActive==true
@@ -1001,6 +1007,42 @@ links[#links+1]=event.OnClientEvent:Connect(function(raw)
         MotionUncertain=abilityTagged(raw),Live=false,
         ImpactSpeed=velocity and velocity.Magnitude or 0,
         FallSpeed=velocity and -velocity.Y or 0,Zones=zoneList}
+    -- Indicacao ja nesta atualizacao; sem aguardar outro Heartbeat.
+    detectMode(true)
+    updateMarkers()
+end
+
+links[#links+1]=event.OnClientEvent:Connect(ingestBallState)
+
+-- O controlador nativo mantem a ultima bola de cada arena mesmo que
+-- o script seja ligado no meio do round ou receba um Remote atrasado.
+-- So calcula novamente quando a referencia do estado mudar.
+local function syncControllerState(arena)
+    if not ballController or type(ballController._balls)~='table' then
+        return
+    end
+    local entry=ballController._balls[arena]
+    local raw=entry and entry.State
+    if type(raw)~='table' or raw.Arena~=arena then return end
+    local previous=states[arena]
+    if not previous or previous.Raw~=raw then
+        ingestBallState(raw)
+    end
+end
+
+-- Recupera imediatamente o estado existente ao executar em partida.
+syncControllerState('Main')
+syncControllerState('Practice')
+
+-- A mudanca de InRound pode chegar DEPOIS do BallState no publico.
+-- Reavalia a arena na mesma notificacao em que o jogo troca o foco.
+links[#links+1]=me:GetAttributeChangedSignal('InRound'):Connect(function()
+    if stopped then return end
+    detectMode(true)
+    local arena=me:GetAttribute('InRound')
+    if arena=='Main' or arena=='Practice' then
+        syncControllerState(arena)
+    end
     updateMarkers()
 end)
 
@@ -1571,9 +1613,11 @@ local function safeDiveTarget(root)
     if arena~='Main' and arena~='Practice' then
         return nil,'arena nao reconhecida'
     end
+    syncControllerState(arena)
     local s=correctedState and correctedState(arena)
     if not s then return nil,'BallState sem alvo valido em '..arena end
-    if s.Surface~='floor' or not s.Reliable
+    if not s.Raw or s.Raw.Dead
+        or s.Surface~='floor' or not s.Reliable
         or s.MotionUncertain or s.Live
         or typeof(s.Point)~='Vector3'
         or typeof(s.Normal)~='Vector3' or s.Normal.Y<0.88
@@ -1582,8 +1626,10 @@ local function safeDiveTarget(root)
     end
 
     local timeLeft=s.EndTime-W:GetServerTimeNow()
-    -- Os saques publicos podem ter trajetorias mais longas que Practice.
-    if timeLeft < -0.045 or timeLeft>1.65 then
+    -- Publico/rankeada anuncia quedas futuras de ate ~3.3 segundos.
+    -- Permite calcular a direcao imediatamente ao pressionar E.
+    local maxLead=arena=='Main' and 3.5 or 1.65
+    if timeLeft < -0.045 or timeLeft>maxLead then
         return nil,string.format('tempo de impacto %.2fs',timeLeft)
     end
     local direction,dist=horizontal(root.Position,s.Point)
@@ -1983,9 +2029,17 @@ local function cancelSmart()
     aimUntil=0
 end
 
+local lastControllerPoll=0
 links[#links+1]=Run.Heartbeat:Connect(function()
     if stopped then return end
     samplePing()
+    -- Snapshot leve: evita perder o primeiro aviso de um round publico.
+    local now=os.clock()
+    if now-(lastControllerPoll or 0)>=0.11 then
+        lastControllerPoll=now
+        syncControllerState('Main')
+        syncControllerState('Practice')
+    end
     updateBallMotion()
     updateMarkers()
     updateEIntercept()
