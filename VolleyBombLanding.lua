@@ -259,7 +259,7 @@ local decorNames={
     'fountain','waterfall','waterjet','vendor','merchant',
     'shopnpc','eventnpc','packstand','gamepass','questgiver',
     'decoration','decorative','foliage','vegetation','flower',
-    'tree','bush','leaf','branch','trunk','palm','bench',
+    'bush','leaf','branch','trunk','palm','bench',
     'banner','poster','scenery','cosmetic','ornament','lantern'
 }
 local lobbyNames={
@@ -314,7 +314,11 @@ local function fpsDecor(inst)
     local depth=0
     while current and current~=W and depth<18 do
         local n=fpsName(current.Name)
-        if fpsHasWord(n,decorNames) then return true end
+        -- "street" contem a sequencia "tree": nao esconder ruas
+        -- como se fossem arvores decorativas.
+        if fpsHasWord(n,decorNames) or n=='tree' or n=='trees'
+            or n:match('^tree[%d_%-]')~=nil
+            or n:find('treemodel',1,true) then return true end
         current=current.Parent
         depth=depth+1
     end
@@ -427,6 +431,15 @@ local function fpsHide(part)
 end
 
 local function fpsWorldPart(inst)
+    if inst:IsA('BillboardGui') or inst:IsA('SurfaceGui')
+        or inst:IsA('Highlight') then
+        local ok,adorn=pcall(function() return inst.Adornee end)
+        if ok and typeof(adorn)=='Instance' then
+            if adorn:IsA('BasePart') then return adorn end
+            if adorn:IsA('Attachment') and adorn.Parent
+                and adorn.Parent:IsA('BasePart') then return adorn.Parent end
+        end
+    end
     local current=inst
     local depth=0
     while current and current~=W and depth<18 do
@@ -450,20 +463,23 @@ local function fpsProcess(inst)
         return
     end
 
-    -- Nunca desligar ParticleEmitter / Beam / Trail / Highlight
-    -- de forma global: a trilha, o contorno da bola, Magnet e
-    -- as outras habilidades usam estes mesmos tipos.
+    -- Efeitos das bolas, Magnet e demais habilidades NUNCA sao
+    -- desativados por tipo; apenas cenografia nomeada do lobby.
     if heavyEffectNames[inst.ClassName] then
-        if FPS.Mode=='Lobby' and fpsInLobbyHierarchy(inst)
-            and fpsDecor(inst) and not fpsBallOrImportant(inst)
+        if inst:IsA('Highlight') then return end
+        if fpsDecor(inst) and not fpsBallOrImportant(inst)
             and not fpsCharacter(inst) then
-            fpsChange(inst,'Enabled',false)
+            local host=fpsWorldPart(inst)
+            local hide=(FPS.Mode=='Lobby' and fpsInLobbyHierarchy(inst))
+                or (FPS.Mode~='Lobby' and host
+                    and fpsShouldHide(host))
+            if hide then fpsChange(inst,'Enabled',false) end
         end
         return
     end
 
-    -- UI 3D que pertence especificamente a cenografia do lobby.
-    -- Durante partida tambem oculta UI ligada a Part fora da arena.
+    -- UI 3D: oculta placares/placas de outras areas, sem tocar
+    -- no HUD dos jogadores ou nos indicadores do script.
     if inst:IsA('BillboardGui') or inst:IsA('SurfaceGui') then
         local host=fpsWorldPart(inst)
         if FPS.Mode=='Lobby' then
@@ -472,6 +488,11 @@ local function fpsProcess(inst)
                 fpsChange(inst,'Enabled',false)
             end
         elseif host and fpsShouldHide(host) then
+            fpsChange(inst,'Enabled',false)
+        end
+    elseif inst:IsA('ProximityPrompt') then
+        local host=fpsWorldPart(inst)
+        if FPS.Mode~='Lobby' and host and fpsShouldHide(host) then
             fpsChange(inst,'Enabled',false)
         end
     end
