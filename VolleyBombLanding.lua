@@ -47,7 +47,7 @@ local hasV65Preferences=false
 
 local function loadSettings(data)
     if type(data)~='table' then return end
-    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' or data.Version=='9.17' or data.Version=='9.18' or data.Version=='9.19' or data.Version=='9.20' or data.Version=='9.21' or data.Version=='9.22' or data.Version=='9.23' or data.Version=='9.24' or data.Version=='9.25' or data.Version=='9.26' or data.Version=='9.27' or data.Version=='9.28' or data.Version=='9.29' or data.Version=='9.30' or data.Version=='9.31' or data.Version=='9.32' or data.Version=='9.33' or data.Version=='9.34' or data.Version=='9.35' or data.Version=='9.36' or data.Version=='9.37' or data.Version=='9.38' then hasV65Preferences=true end
+    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' or data.Version=='9.17' or data.Version=='9.18' or data.Version=='9.19' or data.Version=='9.20' or data.Version=='9.21' or data.Version=='9.22' or data.Version=='9.23' or data.Version=='9.24' or data.Version=='9.25' or data.Version=='9.26' or data.Version=='9.27' or data.Version=='9.28' or data.Version=='9.29' or data.Version=='9.30' or data.Version=='9.31' or data.Version=='9.32' or data.Version=='9.33' or data.Version=='9.34' or data.Version=='9.35' or data.Version=='9.36' or data.Version=='9.37' or data.Version=='9.38' or data.Version=='9.39' then hasV65Preferences=true end
     for _,key in ipairs(savedKeys) do
         local value=data[key]
         if key=='DiveLead' then
@@ -108,7 +108,7 @@ C.Practice=true
 C.SteerDive=true
 
 local function saveSettings()
-    local data={Version='9.38',UI={}}
+    local data={Version='9.39',UI={}}
     for _,key in ipairs(savedKeys) do data[key]=C[key] end
     for _,key in ipairs({'IconX','IconY','PanelX','PanelY'}) do
         data.UI[key]=uiPrefs[key]
@@ -1060,55 +1060,77 @@ local function updateBallMotion()
             local s=liveState(arena)
             if part and part:IsA('BasePart') and s and s.Raw then
                 local samples=track.Samples
-                if track.RawTime~=s.Raw.Time then
+                -- Um novo round pode substituir o modelo, mesmo com
+                -- o mesmo valor Time recebido anteriormente.
+                if track.RawState~=s.Raw or track.RawPart~=part then
                     local special=s.Raw.Tornado~=nil or s.Raw.Magnet~=nil
                     local last=samples[#samples]
-                    local continuous=special and track.PreviousSpecial and last
-                        and now-last.T<0.25 and (last.P-part.Position).Magnitude<20
+                    local continuous=special and track.PreviousSpecial
+                        and track.RawPart==part and last
+                        and now-last.T<0.20
+                        and (last.P-part.Position).Magnitude<12
                     if not continuous then table.clear(samples) end
                     track.RawTime=s.Raw.Time
+                    track.RawState=s.Raw
+                    track.RawPart=part
+                    track.StateSeenAt=now
+                    track.UncertainHits=0
                     track.PreviousSpecial=special
                     if not special then
                         track.UncertainUntil=nil
                         track.UncertainRawTime=nil
                     end
                 end
+
                 samples[#samples+1]={P=part.Position,T=now}
                 while #samples>15 or (#samples>2 and now-samples[1].T>0.48) do
                     table.remove(samples,1)
                 end
-                if #samples>=4 then
+
+                -- O BallController interpola a bola visual; a diferenca
+                -- entre modelo e simulacao nao invalida a previsao
+                -- NATIVA do BallState, principalmente em Main.
+                if #samples>=4 and not s.NativePrediction then
                     local first,last=samples[1],samples[#samples]
                     local dt=last.T-first.T
-                    
-                    
-                    
                     local pastKnownBounce=s.BounceEstimated and
                         W:GetServerTimeNow()>=s.RawEndTime-0.03
-                    if dt>=0.095 and not pastKnownBounce then
+                    if dt>=0.14 and not pastKnownBounce
+                        and now-(track.StateSeenAt or now)>=0.19 then
                         local raw=s.Raw
-                        local t0=math.clamp(W:GetServerTimeNow()-raw.Time-dt,0,12)
-                        local t1=math.clamp(W:GetServerTimeNow()-raw.Time,0,12)
+                        local serverNow=W:GetServerTimeNow()
+                        local t0=math.clamp(serverNow-raw.Time-dt,0,12)
+                        local t1=math.clamp(serverNow-raw.Time,0,12)
                         local expected=position(raw,t1)-position(raw,t0)
                         local observed=last.P-first.P
-                        
-                        
                         local error=(observed-expected).Magnitude
                         local speed=observed.Magnitude/dt
-                        local unstable=error>math.max(2.5,dt*13)
-                            and speed>3
+                        local unstable=error>math.max(7.5,dt*42)
+                            and speed>10
                         if unstable then
-                            s.MotionUncertain=true
-                            track.UncertainUntil=now+0.40
-                            track.UncertainRawTime=s.Raw.Time
-                        elseif track.UncertainUntil and now>track.UncertainUntil then
-                            s.MotionUncertain=false
+                            track.UncertainHits=(track.UncertainHits or 0)+1
+                            if track.UncertainHits>=3 then
+                                s.MotionUncertain=true
+                                track.UncertainUntil=now+0.20
+                                track.UncertainRawTime=s.Raw.Time
+                            end
+                        else
+                            track.UncertainHits=0
+                            if track.UncertainUntil
+                                and now>track.UncertainUntil then
+                                s.MotionUncertain=false
+                                track.UncertainUntil=nil
+                            end
                         end
                     end
                 end
             else
                 table.clear(track.Samples)
                 track.RawTime=nil
+                track.RawState=nil
+                track.RawPart=nil
+                track.StateSeenAt=nil
+                track.UncertainHits=0
                 track.PreviousSpecial=false
             end
         end
@@ -1616,6 +1638,13 @@ local function safeDiveTarget(root)
     syncControllerState(arena)
     local s=correctedState and correctedState(arena)
     if not s then return nil,'BallState sem alvo valido em '..arena end
+    local entry=ballController and ballController._balls
+        and ballController._balls[arena]
+    if entry and entry.State and s.Raw~=entry.State
+        and type(entry.State.Time)=='number'
+        and entry.State.Time>=s.Time then
+        return nil,'estado da bola mudou, aguardando nova previsao'
+    end
     if not s.Raw or s.Raw.Dead
         or s.Surface~='floor' or not s.Reliable
         or s.MotionUncertain or s.Live
@@ -2506,8 +2535,8 @@ end
 links[#links+1]=exitButton.MouseButton1Click:Connect(function()
     stop('close')
 end)
-env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.38'}
-print('[VolleyBomb v9.38] Smart Dive, Indicator, Quick Look, Touchs e Fake Shift. Corte: '..C.SpikeKey..'. Config: '..saveLocation)
+env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.39'}
+print('[VolleyBomb v9.39] Indicator recebe estados da publica sem atraso; dive com alvo recente. Corte: '..C.SpikeKey..'. Config: '..saveLocation)
 ]=]
 
 local RUNNER = [==[
@@ -2515,11 +2544,11 @@ return function(expectedUniverse, core, runner)
     if not game:IsLoaded() then game.Loaded:Wait() end
     local universe = game.GameId
     if type(universe) ~= 'number' or universe == 0 then
-        warn('[VolleyBomb v9.38] Nao foi possivel reconhecer o universo do jogo.')
+        warn('[VolleyBomb v9.39] Nao foi possivel reconhecer o universo do jogo.')
         return
     end
     if expectedUniverse and expectedUniverse ~= universe then
-        warn('[VolleyBomb v9.38] Outro jogo detectado. Autoexecucao ignorada.')
+        warn('[VolleyBomb v9.39] Outro jogo detectado. Autoexecucao ignorada.')
         return
     end
     local replicated = game:GetService('ReplicatedStorage')
@@ -2530,7 +2559,7 @@ return function(expectedUniverse, core, runner)
     local ballState = net and (net:FindFirstChild('RE/BallState')
         or net:WaitForChild('RE/BallState', 25))
     if not ballState or not ballState:IsA('RemoteEvent') then
-        warn('[VolleyBomb v9.38] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
+        warn('[VolleyBomb v9.39] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
         return
     end
 
@@ -2581,26 +2610,26 @@ return function(expectedUniverse, core, runner)
     
     local compiled,err=loadstring(core)
     if not compiled then
-        warn('[VolleyBomb v9.38] Erro ao ler codigo principal: '..tostring(err))
+        warn('[VolleyBomb v9.39] Erro ao ler codigo principal: '..tostring(err))
         return
     end
     local ok,runtimeErr=pcall(compiled)
     if not ok then
-        warn('[VolleyBomb v9.38] Erro na execucao: '..tostring(runtimeErr))
+        warn('[VolleyBomb v9.39] Erro na execucao: '..tostring(runtimeErr))
         return
     end
 
     local current=environ.VolleyBombLanding
-    if type(current)~='table' or current.Version~='9.38' then return end
+    if type(current)~='table' or current.Version~='9.39' then return end
 
     
     
     current.CancelTeleport=function()
         local success,message=clearQueuedTeleports()
         if success then
-            print('[VolleyBomb v9.38] X: Auto-inicio desligado e fila de teleportes limpa.')
+            print('[VolleyBomb v9.39] X: Auto-inicio desligado e fila de teleportes limpa.')
         else
-            warn('[VolleyBomb v9.38] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
+            warn('[VolleyBomb v9.39] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
         end
         return success
     end
@@ -2609,12 +2638,12 @@ return function(expectedUniverse, core, runner)
     
     local cleared,why=clearQueuedTeleports()
     if not cleared then
-        warn('[VolleyBomb v9.38] Nao deu para limpar copias antigas: '..tostring(why))
+        warn('[VolleyBomb v9.39] Nao deu para limpar copias antigas: '..tostring(why))
     end
 
     local queue=getTeleportQueue()
     if not queue then
-        warn('[VolleyBomb v9.38] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
+        warn('[VolleyBomb v9.39] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
         return
     end
 
@@ -2624,28 +2653,28 @@ local core = %q
 local runner = %q
 local compiler, errorMessage = loadstring(runner)
 if not compiler then
-    warn('[VolleyBomb v9.38] Erro no auto-inicio: '..tostring(errorMessage))
+    warn('[VolleyBomb v9.39] Erro no auto-inicio: '..tostring(errorMessage))
 else
     local success, launch = pcall(compiler)
     if success and type(launch)=='function' then
         launch(expectedUniverse, core, runner)
     else
-        warn('[VolleyBomb v9.38] Auto-inicio indisponivel: '..tostring(launch))
+        warn('[VolleyBomb v9.39] Auto-inicio indisponivel: '..tostring(launch))
     end
 end
 ]=], universe, core, runner)
     local registered,queueErr=pcall(queue,queuedCode)
     if registered then
         environ.VolleyBombLandingTeleportQueued=
-            tostring(universe)..'/'..tostring(game.JobId)..'/v9.38'
-        print('[VolleyBomb v9.38] Auto-inicio preparado. X cancela o proximo servidor.')
+            tostring(universe)..'/'..tostring(game.JobId)..'/v9.39'
+        print('[VolleyBomb v9.39] Auto-inicio preparado. X cancela o proximo servidor.')
     else
-        warn('[VolleyBomb v9.38] Falha ao preparar proximo servidor: '..tostring(queueErr))
+        warn('[VolleyBomb v9.39] Falha ao preparar proximo servidor: '..tostring(queueErr))
     end
 end
 ]==]
 
 local compiled,err=loadstring(RUNNER)
-if not compiled then error('[VolleyBomb v9.38] Erro de inicializacao: '..tostring(err)) end
+if not compiled then error('[VolleyBomb v9.39] Erro de inicializacao: '..tostring(err)) end
 local start=compiled()
 start(nil,CORE,RUNNER)
