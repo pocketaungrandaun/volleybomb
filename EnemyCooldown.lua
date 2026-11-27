@@ -116,13 +116,22 @@ return function(ctx)
         local nodes=gui:GetDescendants()
         local best=nil
         for _,node in ipairs(nodes) do
-            if (node:IsA('ImageLabel') or node:IsA('ImageButton'))
+            -- O proprio HUD nao e fonte de imagem: evita reaproveitar
+            -- acidentalmente o icone do ultimo jogador observado.
+            if not node:FindFirstAncestor('VolleyBombLandingUI')
+                and (node:IsA('ImageLabel') or node:IsA('ImageButton'))
                 and node.Image~='' then
                 local match=nil
                 local parent=node
                 for _=1,3 do
                     if not parent or parent==gui then break end
-                    if canonical(parent.Name)==key then match=true break end
+                    local raw=string.lower(parent.Name):gsub('[^%w]','')
+                    if raw==key or raw==key..'icon' or raw==key..'card'
+                        or raw==key..'button' or raw==key..'image'
+                        or raw==key..'frame' then
+                        match=true
+                        break
+                    end
                     parent=parent.Parent
                 end
                 if match then
@@ -135,7 +144,8 @@ return function(ctx)
         -- If the shop names cards generically, find an exact skill
         -- label and its neighboring ImageLabel.
         for _,node in ipairs(nodes) do
-            if (node:IsA('TextLabel') or node:IsA('TextButton'))
+            if not node:FindFirstAncestor('VolleyBombLandingUI')
+                and (node:IsA('TextLabel') or node:IsA('TextButton'))
                 and canonical(node.Text)==key then
                 local parent=node.Parent
                 for _=1,2 do
