@@ -400,9 +400,38 @@ local function fpsWalkable(part)
     return false
 end
 
+-- Modelos de habilidade sao movidos/reutilizados pelo jogo.
+-- Mesmo que nascam fora da quadra antes de serem posicionados,
+-- jamais deixar invisivel sua geometria por cache do Optimizer.
+local gameplayVFXNames={
+    magnet=true,tornado=true,moonball=true,frozen=true,
+    splitball=true,balltrail=true,windtrail=true,
+    ballwind=true,ballvfx=true,ballfx=true,balloutline=true,
+    ballshadow=true,impact=true,shockwave=true,hitmarker=true,
+    vfx=true,fx=true,abilities=true,ability=true,
+    skillvfx=true,skillfx=true,effects=true
+}
+local function fpsGameplayEffect(inst)
+    local node=inst
+    local depth=0
+    while node and node~=W and depth<18 do
+        local n=fpsName(node.Name)
+        if gameplayVFXNames[n] or n:find('magnet',1,true)
+            or n:find('tornado',1,true)
+            or n:find('balltrail',1,true)
+            or n:find('balloutline',1,true)
+            or n:find('abilityvfx',1,true) then
+            return true
+        end
+        node=node.Parent
+        depth=depth+1
+    end
+    return false
+end
+
 local function fpsShouldHide(part)
     if part.Transparency>=0.98 then return false end
-    if fpsBallOrImportant(part) then return false end
+    if fpsBallOrImportant(part) or fpsGameplayEffect(part) then return false end
     if me.Character and part:IsDescendantOf(me.Character) then
         return false
     end
@@ -466,7 +495,7 @@ local function fpsProcess(inst)
     -- Efeitos das bolas, Magnet e demais habilidades NUNCA sao
     -- desativados por tipo; apenas cenografia nomeada do lobby.
     if heavyEffectNames[inst.ClassName] then
-        if inst:IsA('Highlight') then return end
+        if inst:IsA('Highlight') or fpsGameplayEffect(inst) then return end
         if fpsDecor(inst) and not fpsBallOrImportant(inst)
             and not fpsCharacter(inst) then
             local host=fpsWorldPart(inst)
