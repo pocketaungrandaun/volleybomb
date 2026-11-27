@@ -222,6 +222,7 @@ do
 local Lighting=game:GetService('Lighting')
 local terrain=W:FindFirstChildOfClass('Terrain')
 local fpsLastCheck=0
+local fpsLastPlayerCheck=0
 
 local function fpsName(value)
     return string.lower(tostring(value or ''))
@@ -691,6 +692,7 @@ local function fpsRefresh(force)
     FPS.LastRevision=revision
     FPS.LastReady=ready
     FPS.Seen=setmetatable({},{__mode='k'})
+    fpsExposeBalls()
     task.spawn(function() fpsScan(generation) end)
 end
 
@@ -709,6 +711,26 @@ end
 
 -- Renderiza/desrenderiza jogadores que entram/saem da arena ativa,
 -- sem rescans a cada frame. Nunca altera colisoes ou movimentos.
+local function fpsExposeBalls()
+    -- Verifica os dois BallController do jogo: na troca de mapa
+    -- o Part antigo pode ficar invisivel antes da zona nova chegar.
+    for _,arena in ipairs({'Main','Practice'}) do
+        local part=getTrackedBallPart(arena)
+        if part and part.Parent then fpsShow(part) end
+    end
+    local entries=ballController and ballController._balls
+    if type(entries)=='table' then
+        for _,entry in pairs(entries) do
+            if type(entry)=='table' then
+                local part=entry.Part
+                if typeof(part)=='Instance' and part:IsA('BasePart') then
+                    fpsShow(part)
+                end
+            end
+        end
+    end
+end
+
 local function fpsSyncPlayers()
     if not FPS.LastReady or (FPS.Mode~='Main' and FPS.Mode~='Practice') then return end
     for _,pl in ipairs(P:GetPlayers()) do
@@ -741,6 +763,10 @@ links[#links+1]=Run.Heartbeat:Connect(function()
     if now-fpsLastCheck>=0.18 then
         fpsLastCheck=now
         fpsRefresh(false)
+        fpsExposeBalls()
+    end
+    if now-fpsLastPlayerCheck>=0.60 then
+        fpsLastPlayerCheck=now
         fpsSyncPlayers()
     end
 end)
