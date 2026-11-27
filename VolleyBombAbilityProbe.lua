@@ -269,15 +269,17 @@ local function guiIconSource()
                         local p=node.Parent
                         for _=1,2 do
                             if not p or p==zone.object then break end
-                            for _,child in ipairs(p:GetDescendants()) do
-                                if (child:IsA('ImageLabel') or child:IsA('ImageButton'))
-                                    and child.Image~='' then
-                                    iconCandidate(key,child.Image,
-                                        'label-neighbor:'..child:GetFullName(),
-                                        'matches label '..node:GetFullName())
-                                    found=found+1
-                                end
-                            end
+                            local children=p:GetDescendants()
+                    for z=1,math.min(#children,120) do
+                        local child=children[z]
+                        if (child:IsA('ImageLabel') or child:IsA('ImageButton'))
+                            and child.Image~='' then
+                            iconCandidate(key,child.Image,
+                                'label-neighbor:'..child:GetFullName(),
+                                'matches label '..node:GetFullName())
+                            found=found+1
+                        end
+                    end
                             p=p.Parent
                         end
                     end
@@ -398,7 +400,10 @@ end
 local function snapshot()
     local data={at=os.clock(),
         inRound=me:GetAttribute('InRound'),
-        players={},hover=hoverData()}
+        players={},hover=nil}
+    local hoverOk,hoverValue=pcall(hoverData)
+    if hoverOk then data.hover=hoverValue
+    else errorLog('hover snapshot: '..tostring(hoverValue)) end
     for _,pl in ipairs(Players:GetPlayers()) do
         if #data.players<25 then data.players[#data.players+1]=playerData(pl) end
     end
@@ -606,7 +611,11 @@ connections[#connections+1]=Run.Heartbeat:Connect(function()
     end
     if now-sampleTime>0.25 then
         sampleTime=now
-        local sample=hoverData()
+        local sampleOK,sample=pcall(hoverData)
+        if not sampleOK then
+            errorLog('mouse read: '..tostring(sample))
+            return
+        end
         local key=tostring(sample.playerNative)..'/'..
             tostring(sample.playerRaycast)..'/'..tostring(sample.inRound)
         if sample.playerNative or sample.playerRaycast
