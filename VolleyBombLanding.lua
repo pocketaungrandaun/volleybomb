@@ -31,7 +31,7 @@ local C={Main=true,Practice=true,SmartDive=false,
     MaxEarlyWait=5.2, EmergencyWindow=0.020,
     SteerDive=true, 
     SpikeDirection=false,SpikeKey='X',
-    FPSBoost=true,CameraServe=false,Indicator=true,Touchs=true}
+    CameraServe=false,Indicator=true,Touchs=true}
 local env=_G
 if type(getgenv)=='function' then
     local ok,e=pcall(getgenv)
@@ -40,14 +40,14 @@ end
 
 local saveFile='VolleyBombLanding_settings.json'
 local savedKeys={'SmartDive',
-    'DiveLead','SpikeDirection','SpikeKey','FPSBoost','CameraServe','Indicator','Touchs'}
+    'DiveLead','SpikeDirection','SpikeKey','CameraServe','Indicator','Touchs'}
 local uiPrefs={}
 local saveLocation='sessao'
 local hasV65Preferences=false
 
 local function loadSettings(data)
     if type(data)~='table' then return end
-    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' or data.Version=='9.17' or data.Version=='9.18' or data.Version=='9.19' or data.Version=='9.20' or data.Version=='9.21' or data.Version=='9.22' or data.Version=='9.23' or data.Version=='9.24' or data.Version=='9.25' or data.Version=='9.26' or data.Version=='9.27' or data.Version=='9.28' or data.Version=='9.29' or data.Version=='9.30' or data.Version=='9.31' or data.Version=='9.32' or data.Version=='9.33' or data.Version=='9.34' or data.Version=='9.35' or data.Version=='9.36' or data.Version=='9.37' then hasV65Preferences=true end
+    if data.Version=='6.5' or data.Version=='6.6' or data.Version=='6.7' or data.Version=='6.8' or data.Version=='6.9' or data.Version=='7.0' or data.Version=='7.1' or data.Version=='7.2' or data.Version=='7.3' or data.Version=='7.4' or data.Version=='7.5' or data.Version=='7.6' or data.Version=='7.7' or data.Version=='7.8' or data.Version=='7.9' or data.Version=='8.0' or data.Version=='8.1' or data.Version=='8.2' or data.Version=='8.3' or data.Version=='8.4' or data.Version=='8.5' or data.Version=='8.6' or data.Version=='8.8' or data.Version=='8.9' or data.Version=='9.0' or data.Version=='9.1' or data.Version=='9.2' or data.Version=='9.3' or data.Version=='9.4' or data.Version=='9.5' or data.Version=='9.6' or data.Version=='9.7' or data.Version=='9.8' or data.Version=='9.9' or data.Version=='9.10' or data.Version=='9.11' or data.Version=='9.12' or data.Version=='9.13' or data.Version=='9.14' or data.Version=='9.15' or data.Version=='9.16' or data.Version=='9.17' or data.Version=='9.18' or data.Version=='9.19' or data.Version=='9.20' or data.Version=='9.21' or data.Version=='9.22' or data.Version=='9.23' or data.Version=='9.24' or data.Version=='9.25' or data.Version=='9.26' or data.Version=='9.27' or data.Version=='9.28' or data.Version=='9.29' or data.Version=='9.30' or data.Version=='9.31' or data.Version=='9.32' or data.Version=='9.33' or data.Version=='9.34' or data.Version=='9.35' or data.Version=='9.36' or data.Version=='9.37' or data.Version=='9.38' then hasV65Preferences=true end
     for _,key in ipairs(savedKeys) do
         local value=data[key]
         if key=='DiveLead' then
@@ -108,7 +108,7 @@ C.Practice=true
 C.SteerDive=true
 
 local function saveSettings()
-    local data={Version='9.37',UI={}}
+    local data={Version='9.38',UI={}}
     for _,key in ipairs(savedKeys) do data[key]=C[key] end
     for _,key in ipairs({'IconX','IconY','PanelX','PanelY'}) do
         data.UI[key]=uiPrefs[key]
@@ -206,590 +206,6 @@ end
 
 
 
--- Optimizer v3: selecao apenas VISUAL, segura para arena e bola.
--- Texturas, materiais, colliders e hierarquia de objetos ficam intactos.
-local FPS={
-    Enabled=false,Generation=0,Revision=0,
-    Originals={},HiddenOriginals={},
-    Seen=setmetatable({},{__mode='k'}),
-    Mode='Lobby',LastRevision=-1,LastReady=nil,
-    ZoneList=nil,GetMode=nil,IsArenaPoint=nil,
-    Processed=0,Hidden=0
-}
-local fpsSetEnabled,fpsRestore
-
-do
-local Lighting=game:GetService('Lighting')
-local terrain=W:FindFirstChildOfClass('Terrain')
-local fpsLastCheck=0
-local fpsLastPlayerCheck=0
-
-local function fpsName(value)
-    return string.lower(tostring(value or ''))
-end
-local function fpsHasWord(name,patterns)
-    for _,word in ipairs(patterns) do
-        if name:find(word,1,true) then return true end
-    end
-    return false
-end
-
--- Somente leitura das propriedades originais; restauracao completa no OFF.
-local function fpsChange(inst,property,value)
-    if not inst or not inst.Parent then return end
-    local ok,original=pcall(function() return inst[property] end)
-    if not ok or original==value then return end
-    if pcall(function() inst[property]=value end) then
-        local old=FPS.Originals[inst]
-        if not old then old={} FPS.Originals[inst]=old end
-        if old[property]==nil then old[property]=original end
-    end
-end
-
-local protectedNames={
-    'spawn','teleport','portal','queue','matchmaking',
-    'trigger','hitbox','collider','collision','checkpoint',
-    'lobbyedgewall','ballshadow','ballindicator','indicator',
-    'balltrail','ballwind','windtrail','volleyball','projectile',
-    'bump','swing','dive','serve','ballvfx',
-    'impact','shockwave','ballhit','windfx'
-}
-local decorNames={
-    'leaderboard','leader board','topwins','topplayers','rankboard',
-    'statue','statboard','statistic','roulette','spinwheel',
-    'fountain','waterfall','waterjet','vendor','merchant',
-    'shopnpc','eventnpc','packstand','gamepass','questgiver',
-    'decoration','decorative','foliage','vegetation','flower',
-    'bush','leaf','branch','trunk','palm','bench',
-    'banner','poster','scenery','cosmetic','ornament','lantern'
-}
-local lobbyNames={
-    lobby=true,hub=true,waitingroom=true,lobbyprops=true,
-    lobbydecor=true,lobbydecoration=true,
-    mainlobby=true,spawnlobby=true,lobbymap=true
-}
-local heavyEffectNames={
-    ['ParticleEmitter']=true,['Beam']=true,['Trail']=true,
-    ['Smoke']=true,['Fire']=true,['Sparkles']=true,
-    ['PointLight']=true,['SpotLight']=true,['SurfaceLight']=true,
-    ['Highlight']=true
-}
-
-local function fpsCharacter(inst)
-    local current=inst
-    local depth=0
-    while current and current~=W and depth<22 do
-        if current:IsA('Model') and current:FindFirstChildOfClass('Humanoid') then
-            if P:GetPlayerFromCharacter(current) then return true end
-        end
-        current=current.Parent
-        depth=depth+1
-    end
-    return false
-end
-
-local function fpsBallNameMatches(n,transitioning)
-    return n=='ball' or n=='volleyball'
-        or (n=='bowling ball' and (FPS.Mode=='Main' or transitioning))
-        or (n=='default' and (FPS.Mode=='Practice' or transitioning))
-end
-
-local function fpsBallOrImportant(inst)
-    if inst==folder or inst:IsDescendantOf(folder) then return true end
-    local camera=W.CurrentCamera
-    if camera and inst:IsDescendantOf(camera) then return true end
-
-    -- Durante a transicao protege ambas as bolas. Quando a zona
-    -- estabiliza, so a da arena atual permanece obrigatoriamente
-    -- visivel (a outra pode ser ocultada com o resto do mapa).
-    local transitioning=not FPS.LastReady
-    if inst:IsA('BasePart')
-        and fpsBallNameMatches(fpsName(inst.Name),transitioning) then
-        return true
-    end
-    local entries=ballController and ballController._balls
-    if type(entries)=='table' then
-        for arena,entry in pairs(entries) do
-            if (arena==FPS.Mode or transitioning) and type(entry)=='table' then
-                local core=entry.Part
-                if typeof(core)=='Instance' and core.Parent
-                    and (inst==core or inst:IsDescendantOf(core)) then
-                    return true
-                end
-            end
-        end
-    end
-    local node=inst.Parent
-    local depth=0
-    while node and node~=W and depth<12 do
-        if node:IsA('BasePart')
-            and fpsBallNameMatches(fpsName(node.Name),transitioning) then
-            return true
-        end
-        node=node.Parent
-        depth=depth+1
-    end
-    return false
-end
-
-local function fpsDecor(inst)
-    local current=inst
-    local depth=0
-    while current and current~=W and depth<18 do
-        local n=fpsName(current.Name)
-        -- "street" contem a sequencia "tree": nao esconder ruas
-        -- como se fossem arvores decorativas.
-        if fpsHasWord(n,decorNames) or n=='tree' or n=='trees'
-            or n:match('^tree[%d_%-]')~=nil
-            or n:find('treemodel',1,true) then return true end
-        current=current.Parent
-        depth=depth+1
-    end
-    return false
-end
-
-local function fpsInLobbyHierarchy(inst)
-    local current=inst
-    local depth=0
-    while current and current~=W and depth<18 do
-        if lobbyNames[fpsName(current.Name)] then return true end
-        current=current.Parent
-        depth=depth+1
-    end
-    return false
-end
-
--- Os Zone Parts sao enviados pelo servidor na arena atual.
--- Se ainda nao recebemos as zonas, NAO escondemos estruturas por distancia.
-local function fpsHasZones(mode)
-    local list=FPS.ZoneList and FPS.ZoneList(mode)
-    if type(list)~='table' then return false end
-    for _,zone in ipairs(list) do
-        if typeof(zone)=='Instance' and zone:IsA('BasePart') and zone.Parent then
-            return true
-        end
-    end
-    return false
-end
-
--- A arena so esta pronta para isolamento quando o proprio jogador
--- ja esta proximo das Zones atuais. Evita ocultar o mapa novo
--- enquanto o servidor esta movendo personagem/bola para outra quadra.
-local function fpsArenaReady(mode)
-    if mode~='Main' and mode~='Practice' then return true end
-    if not fpsHasZones(mode) then return false end
-    local ch=me.Character
-    local root=ch and ch:FindFirstChild('HumanoidRootPart')
-    if not root then return false end
-    local pos=root.Position
-    local list=FPS.ZoneList(mode)
-    for _,z in ipairs(list) do
-        if typeof(z)=='Instance' and z:IsA('BasePart') and z.Parent then
-            local p=z.CFrame:PointToObjectSpace(pos)
-            if math.abs(p.X)<=z.Size.X*0.5+22
-                and math.abs(p.Z)<=z.Size.Z*0.5+22
-                and math.abs(p.Y)<=95 then
-                return true
-            end
-        end
-    end
-    return false
-end
-
-local function fpsInsideCurrentArena(part,mode)
-    if mode~='Main' and mode~='Practice' then return false end
-    local pos=part.Position
-    local size=part.Size
-    local list=FPS.ZoneList and FPS.ZoneList(mode)
-    local hasZone=false
-    if type(list)=='table' then
-        for _,zone in ipairs(list) do
-            if typeof(zone)=='Instance' and zone:IsA('BasePart')
-                and zone.Parent then
-                hasZone=true
-                local p=zone.CFrame:PointToObjectSpace(pos)
-                -- Margem curta: a anterior (+55) deixava o lobby e
-                -- o Practice aparecerem ao olhar para os lados.
-                local x=zone.Size.X*0.5+17+math.min(size.X*0.5,14)
-                local z=zone.Size.Z*0.5+17+math.min(size.Z*0.5,14)
-                if math.abs(p.X)<=x and math.abs(p.Z)<=z
-                    and math.abs(p.Y)<=100+math.min(size.Y*0.5,25) then
-                    return true
-                end
-            end
-        end
-    end
-    if hasZone then return false end
-    -- Entre teleport e primeiro BallState, usa posicao do jogador.
-    -- Assim nao revela todo o resto do mapa, mas evita sumir a quadra.
-    local char=me.Character
-    local root=char and char:FindFirstChild('HumanoidRootPart')
-    if root then
-        local delta=pos-root.Position
-        return math.abs(delta.X)<=58+math.min(size.X*0.5,12)
-            and math.abs(delta.Z)<=58+math.min(size.Z*0.5,12)
-            and math.abs(delta.Y)<=100+math.min(size.Y*0.5,20)
-    end
-    return false
-end
-
--- Mantem pisos grandes e estruturas essenciais, para a arena nunca
--- sumir mesmo quando um Part usa o centro fora do Zone principal.
-local function fpsWalkable(part)
-    if part:IsA('SpawnLocation') then return true end
-    local n=fpsName(part.Name)
-    if fpsHasWord(n,{'floor','ground','baseplate','bridge',
-        'stair','platform','path','walkway','net','wall','boundary'}) then
-        return true
-    end
-    local size=part.Size
-    if math.max(size.X,size.Z)>140 then return true end
-    return false
-end
-
--- Modelos de habilidade sao movidos/reutilizados pelo jogo.
--- Mesmo que nascam fora da quadra antes de serem posicionados,
--- jamais deixar invisivel sua geometria por cache do Optimizer.
-local gameplayVFXNames={
-    magnet=true,tornado=true,moonball=true,frozen=true,
-    splitball=true,balltrail=true,windtrail=true,
-    ballwind=true,ballvfx=true,ballfx=true,balloutline=true,
-    ballshadow=true,impact=true,shockwave=true,hitmarker=true,
-    vfx=true,fx=true,abilities=true,ability=true,
-    skillvfx=true,skillfx=true,effects=true
-}
-local function fpsGameplayEffect(inst)
-    local node=inst
-    local depth=0
-    while node and node~=W and depth<18 do
-        local n=fpsName(node.Name)
-        if gameplayVFXNames[n] or n:find('magnet',1,true)
-            or n:find('tornado',1,true)
-            or n:find('balltrail',1,true)
-            or n:find('balloutline',1,true)
-            or n:find('abilityvfx',1,true) then
-            return true
-        end
-        node=node.Parent
-        depth=depth+1
-    end
-    return false
-end
-
-local function fpsShouldHide(part)
-    if part.Transparency>=0.98 then return false end
-    if fpsBallOrImportant(part) or fpsGameplayEffect(part) then return false end
-    if me.Character and part:IsDescendantOf(me.Character) then
-        return false
-    end
-    local mode=FPS.Mode
-    if mode=='Main' or mode=='Practice' then
-        -- Durante troca da quadra ainda nao sabemos o limite correto.
-        -- Nao esconder nada ate Main/Practice ter Zones e jogador
-        -- sincronizados. Prioriza a bola e o Indicator sem atraso.
-        if not FPS.LastReady then return false end
-        -- Outros objetos moveis (bolas/skills) nao devem ser cacheados
-        -- como invisiveis por estarem fora do local de spawn.
-        -- So NPC/jogadores de outras arenas podem ser ocultados.
-        if not part.Anchored and not fpsCharacter(part) then
-            return false
-        end
-        return not fpsInsideCurrentArena(part,mode)
-    end
-    -- No lobby: somente cenografia explicitamente nomeada.
-    if not part.Anchored or fpsCharacter(part) then return false end
-    if fpsWalkable(part) then return false end
-    return fpsDecor(part)
-end
-
-local function fpsHide(part)
-    if FPS.HiddenOriginals[part]~=nil then return end
-    local original=part.LocalTransparencyModifier
-    if original>=0.98 then return end
-    if pcall(function() part.LocalTransparencyModifier=1 end) then
-        FPS.HiddenOriginals[part]=original
-        FPS.Hidden=FPS.Hidden+1
-    end
-end
-
-local function fpsShow(part)
-    local old=FPS.HiddenOriginals[part]
-    if old==nil then return end
-    pcall(function()
-        if part and part.Parent then part.LocalTransparencyModifier=old end
-    end)
-    FPS.HiddenOriginals[part]=nil
-end
-local function fpsRestoreEnabled(inst)
-    local props=FPS.Originals[inst]
-    if not props or props.Enabled==nil then return end
-    local old=props.Enabled
-    pcall(function()
-        if inst and inst.Parent then inst.Enabled=old end
-    end)
-    props.Enabled=nil
-end
-
-
-local function fpsWorldPart(inst)
-    if inst:IsA('BillboardGui') or inst:IsA('SurfaceGui')
-        or inst:IsA('Highlight') then
-        local ok,adorn=pcall(function() return inst.Adornee end)
-        if ok and typeof(adorn)=='Instance' then
-            if adorn:IsA('BasePart') then return adorn end
-            if adorn:IsA('Attachment') and adorn.Parent
-                and adorn.Parent:IsA('BasePart') then return adorn.Parent end
-        end
-    end
-    local current=inst
-    local depth=0
-    while current and current~=W and depth<18 do
-        if current:IsA('BasePart') then return current end
-        current=current.Parent
-        depth=depth+1
-    end
-    return nil
-end
-
-local function fpsProcess(inst)
-    if not FPS.Enabled or not inst or not inst.Parent
-        or not inst:IsDescendantOf(W) then return end
-    if FPS.Seen[inst] then return end
-    FPS.Seen[inst]=true
-    FPS.Processed=FPS.Processed+1
-
-    if inst:IsA('BasePart') then
-        fpsChange(inst,'CastShadow',false)
-        if fpsShouldHide(inst) then
-            fpsHide(inst)
-        else
-            -- Objetos recem-admitidos na quadra atual voltam
-            -- imediatamente, inclusive a bola na troca de round.
-            fpsShow(inst)
-        end
-        return
-    end
-
-    -- Trilha, contorno, Magnet e habilidades: jamais desliga por classe.
-    if heavyEffectNames[inst.ClassName] then
-        if inst:IsA('Highlight') or fpsGameplayEffect(inst) then
-            fpsRestoreEnabled(inst)
-            return
-        end
-        local hide=false
-        if fpsDecor(inst) and not fpsBallOrImportant(inst)
-            and not fpsCharacter(inst) then
-            local host=fpsWorldPart(inst)
-            hide=(FPS.Mode=='Lobby' and fpsInLobbyHierarchy(inst))
-                or (FPS.Mode~='Lobby' and host
-                    and fpsShouldHide(host)) or false
-        end
-        if hide then fpsChange(inst,'Enabled',false)
-        else fpsRestoreEnabled(inst) end
-        return
-    end
-
-    if inst:IsA('BillboardGui') or inst:IsA('SurfaceGui') then
-        local host=fpsWorldPart(inst)
-        local hide=false
-        if FPS.Mode=='Lobby' then
-            hide=fpsInLobbyHierarchy(inst) and fpsDecor(inst)
-                and not fpsBallOrImportant(inst)
-        elseif host then
-            hide=fpsShouldHide(host)
-        end
-        if hide then fpsChange(inst,'Enabled',false)
-        else fpsRestoreEnabled(inst) end
-    elseif inst:IsA('ProximityPrompt') then
-        local host=fpsWorldPart(inst)
-        if FPS.Mode~='Lobby' and host and fpsShouldHide(host) then
-            fpsChange(inst,'Enabled',false)
-        else
-            fpsRestoreEnabled(inst)
-        end
-    end
-end
-
-local function fpsApplyWorldSettings()
-    fpsChange(Lighting,'GlobalShadows',false)
-    if terrain then fpsChange(terrain,'Decoration',false) end
-    -- Bloom e ColorCorrection podem ser importantes para skills;
-    -- so desliga os efeitos de pos-processamento atmosferico.
-    for _,effect in ipairs(Lighting:GetDescendants()) do
-        if effect:IsA('DepthOfFieldEffect')
-            or effect:IsA('SunRaysEffect') then
-            fpsChange(effect,'Enabled',false)
-        end
-    end
-end
-
-local function fpsScan(generation)
-    -- PRIMEIRA PASSAGEM: liberar tudo que ja estava oculto mas passou
-    -- a pertencer a arena nova. Nao esperar varrer o mapa inteiro.
-    local started=os.clock()
-    local checked=0
-    for part in pairs(FPS.HiddenOriginals) do
-        if stopped or not FPS.Enabled or FPS.Generation~=generation then
-            return
-        end
-        if not part or not part.Parent or not fpsShouldHide(part) then
-            fpsShow(part)
-        end
-        checked=checked+1
-        if checked%140==0 and os.clock()-started>0.006 then
-            task.wait()
-            started=os.clock()
-        end
-    end
-
-    -- SEGUNDA PASSAGEM: remover visual das areas distantes em blocos
-    -- pequenos para nao travar o Indicator quando o mapa troca.
-    local list=W:GetDescendants()
-    local lastYield=os.clock()
-    for i,inst in ipairs(list) do
-        if stopped or not FPS.Enabled or FPS.Generation~=generation then
-            return
-        end
-        fpsProcess(inst)
-        if i%160==0 and os.clock()-lastYield>0.006 then
-            task.wait()
-            lastYield=os.clock()
-        end
-    end
-    table.clear(list)
-end
-
-fpsRestore=function()
-    for inst,old in pairs(FPS.HiddenOriginals) do
-        pcall(function()
-            if inst and inst.Parent then inst.LocalTransparencyModifier=old end
-        end)
-    end
-    for inst,props in pairs(FPS.Originals) do
-        if inst and inst.Parent then
-            for property,value in pairs(props) do
-                pcall(function() inst[property]=value end)
-            end
-        end
-    end
-    FPS.HiddenOriginals={}
-    FPS.Originals={}
-    FPS.Seen=setmetatable({},{__mode='k'})
-    FPS.Processed=0
-    FPS.Hidden=0
-end
-
-local function fpsExposeBalls()
-    -- Verifica os dois BallController do jogo: na troca de mapa
-    -- o Part antigo pode ficar invisivel antes da zona nova chegar.
-    for _,arena in ipairs({'Main','Practice'}) do
-        if arena==FPS.Mode or not FPS.LastReady then
-            local part=getTrackedBallPart(arena)
-            if part and part.Parent then fpsShow(part) end
-        end
-    end
-    local entries=ballController and ballController._balls
-    if type(entries)=='table' then
-        for arena,entry in pairs(entries) do
-            if (arena==FPS.Mode or not FPS.LastReady)
-                and type(entry)=='table' then
-                local part=entry.Part
-                if typeof(part)=='Instance' and part:IsA('BasePart') then
-                    fpsShow(part)
-                end
-            end
-        end
-    end
-end
-
-local function fpsRefresh(force)
-    if not FPS.Enabled then return end
-    local mode=FPS.GetMode and FPS.GetMode() or 'Lobby'
-    local revision=FPS.Revision
-    local ready=fpsArenaReady(mode)
-    if not force and mode==FPS.Mode and revision==FPS.LastRevision
-        and ready==FPS.LastReady then return end
-
-    FPS.Generation=FPS.Generation+1
-    local generation=FPS.Generation
-    -- Nao restaurar TODAS as sombras/efeitos e reaplicar de novo a cada
-    -- round. Isso causava travamentos, cache stale e indicador atrasado.
-    FPS.Mode=mode
-    FPS.LastRevision=revision
-    FPS.LastReady=ready
-    FPS.Seen=setmetatable({},{__mode='k'})
-    fpsExposeBalls()
-    task.spawn(function() fpsScan(generation) end)
-end
-
-fpsSetEnabled=function(enabled)
-    enabled=not not enabled
-    if FPS.Enabled==enabled then return end
-    FPS.Enabled=enabled
-    if enabled then
-        fpsApplyWorldSettings()
-        fpsRefresh(true)
-    else
-        FPS.Generation=FPS.Generation+1
-        fpsRestore()
-    end
-end
-
--- Renderiza/desrenderiza jogadores que entram/saem da arena ativa,
--- sem rescans a cada frame. Nunca altera colisoes ou movimentos.
-local function fpsSyncPlayers()
-    if not FPS.LastReady or (FPS.Mode~='Main' and FPS.Mode~='Practice') then return end
-    for _,pl in ipairs(P:GetPlayers()) do
-        local model=pl.Character
-        if model then
-            for _,part in ipairs(model:GetDescendants()) do
-                if part:IsA('BasePart') then
-                    local hide=fpsShouldHide(part)
-                    if hide then
-                        fpsHide(part)
-                    else
-                        local original=FPS.HiddenOriginals[part]
-                        if original~=nil then
-                            pcall(function()
-                                part.LocalTransparencyModifier=original
-                            end)
-                            FPS.HiddenOriginals[part]=nil
-                        end
-                    end
-                end
-            end
-        end
-    end
-end
-
--- Troca entre Lobby/Main/Practice e atualizacao das zonas ao vivo.
-links[#links+1]=Run.Heartbeat:Connect(function()
-    if stopped or not FPS.Enabled then return end
-    local now=os.clock()
-    if now-fpsLastCheck>=0.18 then
-        fpsLastCheck=now
-        fpsRefresh(false)
-        fpsExposeBalls()
-    end
-    if now-fpsLastPlayerCheck>=0.60 then
-        fpsLastPlayerCheck=now
-        fpsSyncPlayers()
-    end
-end)
-
--- Objetos novos sao processados sem reescanear todo o mapa.
-links[#links+1]=W.DescendantAdded:Connect(function(inst)
-    if FPS.Enabled then fpsProcess(inst) end
-end)
-links[#links+1]=Lighting.DescendantAdded:Connect(function(inst)
-    if FPS.Enabled and (inst:IsA('DepthOfFieldEffect')
-        or inst:IsA('SunRaysEffect')) then
-        fpsChange(inst,'Enabled',false)
-    end
-end)
-end
-
-
 local function character()
     local ch=me.Character
     if not ch then return nil end
@@ -829,23 +245,16 @@ end
 
 
 local function predictionCast(origin,direction,p,castRadius)
-    for _=1,9 do
-        local ok,hit=pcall(function()
-            if castRadius then return W:Spherecast(origin,castRadius,direction,p) end
-            return W:Raycast(origin,direction,p)
-        end)
-        if not ok then return nil,false end
-        if not hit then return nil,true end
-        if hit.Instance and FPS.HiddenOriginals[hit.Instance]~=nil then
-            local excluded=p.FilterDescendantsInstances
-            excluded[#excluded+1]=hit.Instance
-            p.FilterDescendantsInstances=excluded
-        else
-            return hit,true
+    -- Fisica original do mapa: nao ignora objetos com transparencia
+    -- alterada por versoes antigas do Optimizer.
+    local ok,hit=pcall(function()
+        if castRadius then
+            return W:Spherecast(origin,castRadius,direction,p)
         end
-    end
-    
-    return nil,false
+        return W:Raycast(origin,direction,p)
+    end)
+    if not ok then return nil,false end
+    return hit,true
 end
 
 local function marker(arena,color)
@@ -956,23 +365,6 @@ local function detectMode(force)
     end
     currentMode=chosen
     return currentMode
-end
-
-FPS.GetMode=detectMode
-FPS.ZoneList=function(mode) return zones[mode] end
-
-FPS.IsArenaPoint=function(pos)
-    for _,arena in ipairs({'Main','Practice'}) do
-        for _,zone in ipairs(zones[arena]) do
-            if typeof(zone)=='Instance' and zone:IsA('BasePart') and zone.Parent then
-                local relative=zone.CFrame:PointToObjectSpace(pos)
-                if math.abs(relative.X)<=zone.Size.X*0.5+5
-                    and math.abs(relative.Z)<=zone.Size.Z*0.5+5
-                    and math.abs(relative.Y)<=90 then return true end
-            end
-        end
-    end
-    return false
 end
 
 -- Mantem a previsao disponivel para Smart Dive mesmo com Indicator desligado.
@@ -1587,7 +979,6 @@ links[#links+1]=event.OnClientEvent:Connect(function(raw)
         end
     end
     zones[arena]=zoneList
-    if changedZones then FPS.Revision=FPS.Revision+1 end
     detectMode(true)
     
     if C.SmartDive and #zoneList>0
@@ -1713,7 +1104,6 @@ local function liveFloor(arena)
     local groundHit=nil
     local function validGround(hit)
         return hit and hit.Normal.Y>=0.86
-            and not (hit.Instance and FPS.HiddenOriginals[hit.Instance]~=nil)
     end
     
     
@@ -2855,7 +2245,6 @@ end
 
 local function applyToggle(key)
     C[key]=not C[key]
-    if key=='FPSBoost' then fpsSetEnabled(C.FPSBoost) end
     if key=='Indicator' then
         for _,indicator in pairs(markers) do
             updateIndicatorVisibility(indicator)
@@ -2905,25 +2294,24 @@ end
 
 -- Menu apenas com nomes, sem descricoes.
 refreshSmart=feature('Smart Dive','SmartDive',18,18,276,66)
-feature('Optimizer','FPSBoost',306,18,276,66)
-feature('Quick Look','CameraServe',18,94,276,66)
-feature('Indicator','Indicator',306,94,276,66)
-feature('Touchs','Touchs',306,170,276,66)
+feature('Quick Look','CameraServe',306,18,276,66)
+feature('Indicator','Indicator',18,94,276,66)
+feature('Touchs','Touchs',306,94,276,66)
 
 -- Fake Shift: clique no cartao e depois pressione uma tecla.
 -- O interruptor a direita continua habilitando/desabilitando.
-local fake=card(18,170,276,66)
-label(fake,'Fake Shift',16,18,143,29,15,false)
+local fake=card(18,170,564,66)
+label(fake,'Fake Shift',16,18,405,29,15,false)
 local fakeKeyLetter=make('TextLabel',{
     Name='FakeShiftKey',Text=C.SpikeKey,
     Font=Enum.Font.GothamBold,TextSize=15,
     TextColor3=theme.text,BackgroundColor3=theme.card,
     BackgroundTransparency=0.38,BorderSizePixel=0,
-    Position=UDim2.fromOffset(168,17),
-    Size=UDim2.fromOffset(32,32)
+    Position=UDim2.fromOffset(449,17),
+    Size=UDim2.fromOffset(35,32)
 },fake)
 make('UICorner',{CornerRadius=UDim.new(0,8)},fakeKeyLetter)
-local fakeSwitch,refreshFakeSwitch=switch(fake,214,20,'SpikeDirection')
+local fakeSwitch,refreshFakeSwitch=switch(fake,502,20,'SpikeDirection')
 links[#links+1]=fakeSwitch.MouseButton1Click:Connect(function()
     applyToggle('SpikeDirection')
     refreshFakeSwitch(true)
@@ -2938,7 +2326,6 @@ links[#links+1]=fake.MouseButton1Click:Connect(function()
 end)
 
 saveSettings()
-fpsSetEnabled(C.FPSBoost)
 
 local opened=false
 local seq=0
@@ -3049,9 +2436,6 @@ local function stop(reason)
     if spikeStateLink then spikeStateLink:Disconnect() end
     if spikeBindOK then CAS:UnbindAction(spikeActionKey) end
     stopSteering()
-    FPS.Generation=FPS.Generation+1
-    FPS.Enabled=false
-    fpsRestore()
     cancelTweens()
     if menuBindOK then CAS:UnbindAction(menuAction) end
     restoreCamera()
@@ -3069,8 +2453,8 @@ end
 links[#links+1]=exitButton.MouseButton1Click:Connect(function()
     stop('close')
 end)
-env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.37'}
-print('[VolleyBomb v9.37] Optimizer sem delay no switch: bola/arena protegidas e render por etapas. Corte: '..C.SpikeKey..'. FPS: '..(C.FPSBoost and 'TURBO' or 'OFF')..'. Config: '..saveLocation)
+env.VolleyBombLanding={Stop=stop,Config=C,UI=uiPrefs,Version='9.38'}
+print('[VolleyBomb v9.38] Optimizer removido. Smart Dive, Indicator, Quick Look, Touchs e Fake Shift preservados. Corte: '..C.SpikeKey..'. Config: '..saveLocation)
 ]=]
 
 local RUNNER = [==[
@@ -3078,11 +2462,11 @@ return function(expectedUniverse, core, runner)
     if not game:IsLoaded() then game.Loaded:Wait() end
     local universe = game.GameId
     if type(universe) ~= 'number' or universe == 0 then
-        warn('[VolleyBomb v9.37] Nao foi possivel reconhecer o universo do jogo.')
+        warn('[VolleyBomb v9.38] Nao foi possivel reconhecer o universo do jogo.')
         return
     end
     if expectedUniverse and expectedUniverse ~= universe then
-        warn('[VolleyBomb v9.37] Outro jogo detectado. Autoexecucao ignorada.')
+        warn('[VolleyBomb v9.38] Outro jogo detectado. Autoexecucao ignorada.')
         return
     end
     local replicated = game:GetService('ReplicatedStorage')
@@ -3093,7 +2477,7 @@ return function(expectedUniverse, core, runner)
     local ballState = net and (net:FindFirstChild('RE/BallState')
         or net:WaitForChild('RE/BallState', 25))
     if not ballState or not ballState:IsA('RemoteEvent') then
-        warn('[VolleyBomb v9.37] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
+        warn('[VolleyBomb v9.38] Estrutura do VolleyBomb nao encontrada; nada sera carregado.')
         return
     end
 
@@ -3144,26 +2528,26 @@ return function(expectedUniverse, core, runner)
     
     local compiled,err=loadstring(core)
     if not compiled then
-        warn('[VolleyBomb v9.37] Erro ao ler codigo principal: '..tostring(err))
+        warn('[VolleyBomb v9.38] Erro ao ler codigo principal: '..tostring(err))
         return
     end
     local ok,runtimeErr=pcall(compiled)
     if not ok then
-        warn('[VolleyBomb v9.37] Erro na execucao: '..tostring(runtimeErr))
+        warn('[VolleyBomb v9.38] Erro na execucao: '..tostring(runtimeErr))
         return
     end
 
     local current=environ.VolleyBombLanding
-    if type(current)~='table' or current.Version~='9.37' then return end
+    if type(current)~='table' or current.Version~='9.38' then return end
 
     
     
     current.CancelTeleport=function()
         local success,message=clearQueuedTeleports()
         if success then
-            print('[VolleyBomb v9.37] X: Auto-inicio desligado e fila de teleportes limpa.')
+            print('[VolleyBomb v9.38] X: Auto-inicio desligado e fila de teleportes limpa.')
         else
-            warn('[VolleyBomb v9.37] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
+            warn('[VolleyBomb v9.38] Nao foi possivel cancelar o auto-inicio: '..tostring(message))
         end
         return success
     end
@@ -3172,12 +2556,12 @@ return function(expectedUniverse, core, runner)
     
     local cleared,why=clearQueuedTeleports()
     if not cleared then
-        warn('[VolleyBomb v9.37] Nao deu para limpar copias antigas: '..tostring(why))
+        warn('[VolleyBomb v9.38] Nao deu para limpar copias antigas: '..tostring(why))
     end
 
     local queue=getTeleportQueue()
     if not queue then
-        warn('[VolleyBomb v9.37] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
+        warn('[VolleyBomb v9.38] Executor nao tem queue_on_teleport. Auto-inicio indisponivel.')
         return
     end
 
@@ -3187,28 +2571,28 @@ local core = %q
 local runner = %q
 local compiler, errorMessage = loadstring(runner)
 if not compiler then
-    warn('[VolleyBomb v9.37] Erro no auto-inicio: '..tostring(errorMessage))
+    warn('[VolleyBomb v9.38] Erro no auto-inicio: '..tostring(errorMessage))
 else
     local success, launch = pcall(compiler)
     if success and type(launch)=='function' then
         launch(expectedUniverse, core, runner)
     else
-        warn('[VolleyBomb v9.37] Auto-inicio indisponivel: '..tostring(launch))
+        warn('[VolleyBomb v9.38] Auto-inicio indisponivel: '..tostring(launch))
     end
 end
 ]=], universe, core, runner)
     local registered,queueErr=pcall(queue,queuedCode)
     if registered then
         environ.VolleyBombLandingTeleportQueued=
-            tostring(universe)..'/'..tostring(game.JobId)..'/v9.37'
-        print('[VolleyBomb v9.37] Auto-inicio preparado. X cancela o proximo servidor.')
+            tostring(universe)..'/'..tostring(game.JobId)..'/v9.38'
+        print('[VolleyBomb v9.38] Auto-inicio preparado. X cancela o proximo servidor.')
     else
-        warn('[VolleyBomb v9.37] Falha ao preparar proximo servidor: '..tostring(queueErr))
+        warn('[VolleyBomb v9.38] Falha ao preparar proximo servidor: '..tostring(queueErr))
     end
 end
 ]==]
 
 local compiled,err=loadstring(RUNNER)
-if not compiled then error('[VolleyBomb v9.37] Erro de inicializacao: '..tostring(err)) end
+if not compiled then error('[VolleyBomb v9.38] Erro de inicializacao: '..tostring(err)) end
 local start=compiled()
 start(nil,CORE,RUNNER)
