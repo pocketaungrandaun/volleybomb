@@ -694,7 +694,9 @@ local function floorAt(point)
 end
 local function ownSide(s,root)
     local impact=zoneAt(s.Zones,s.Point)
-    local mine=zoneAt(s.Zones,root.Position,3.5)
+    -- Prioriza a zona exata; a margem cobre so quem esta na borda.
+    local mine=zoneAt(s.Zones,root.Position)
+        or zoneAt(s.Zones,root.Position,3.5)
 
     -- Na publica/rankeada, a zona do round anterior nao e prova
     -- de que a bola atual caira do nosso lado. Sem zona atual
