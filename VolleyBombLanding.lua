@@ -818,6 +818,7 @@ end
 -- HUD de habilidades em modulo separado para respeitar 200 locais do Luau.
 local enemyCD={Notice=function()end,Observe=function()end,Mount=function()end}
 do
+    local hudLoaded=false
     local ok,source=pcall(function()
         return game:HttpGet('https://raw.githubusercontent.com/pocketaungrandaun/volleybomb/main/EnemyCooldown.lua')
     end)
@@ -837,11 +838,12 @@ do
                     and type(instance.Notice)=='function'
                     and type(instance.Observe)=='function' then
                     enemyCD=instance
+                    hudLoaded=true
                 end
             end
         end
     end
-    if enemyCD.Mount==nil or not ok then
+    if not hudLoaded then
         warn('[VolleyBomb] Enemy CD indisponivel, script principal preservado.')
     end
 end
@@ -1961,7 +1963,10 @@ local gui=make('ScreenGui',{
     ResetOnSpawn=false,DisplayOrder=150,
     ZIndexBehavior=Enum.ZIndexBehavior.Sibling
 },holder)
-enemyCD.Mount(gui)
+local enemyMounted,mountError=pcall(enemyCD.Mount,gui)
+if not enemyMounted then
+    warn('[VolleyBomb] Enemy CD falhou na interface: '..tostring(mountError))
+end
 
 -- Touchs: limite de toques anunciado pelo servidor para a regra vigente.
 -- Nao confundir com BallState.Hits, que contabiliza toques ja feitos.
