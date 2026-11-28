@@ -1,4 +1,4 @@
--- VolleyBomb PreMatch Probe 1.0
+-- VolleyBomb PreMatch Probe 2.0
 -- Investiga se habilidade equipada dos OUTROS jogadores e replicada
 -- ANTES do primeiro uso. Nao altera fisica, GUI do jogo ou remotes.
 -- F6 = nova leitura, F7 = salvar relatorio.
@@ -11,7 +11,8 @@ return (function()
     local H=game:GetService('HttpService')
     local me=P.LocalPlayer
     local state={
-        format='VolleyBombPreMatchProbe/1.0',
+        format='VolleyBombPreMatchProbe/2.0',
+        replion={loaded=false,observations={},channels={},events={},errors={}},
         placeId=game.PlaceId,
         startedAt=os.date('!%Y-%m-%dT%H:%M:%SZ'),
         snapshots={},events={},packageModules={},
@@ -194,6 +195,249 @@ return (function()
             end
         end
     end
+
+    -- Replion pode guardar dados em tabelas por canal, nao em atributos
+    -- de Player. Somente leitura de campos associados a habilidade.
+    local replionClient=nil
+    local observedReplions=setmetatable({},{__mode='k'})
+    local replionCount=0
+    local channelNames={
+        'Data','PlayerData','Profile','Player','PublicData',
+        'Players','PublicPlayers','Game','Match','Round',
+        'GameState','Lobby','Profiles','PlayerProfile','Stats'
+    }
+    local function replionError(message)
+        if #state.replion.errors<22 then
+            state.replion.errors[#state.replion.errors+1]=tostring(message):sub(1,160)
+        end
+    end
+    local function ownerFromPath(path)
+        local stringPath=table.concat(path,'.')
+        for _,pl in ipairs(P:GetPlayers()) do
+            if stringPath:find(pl.Name,1,true)
+                or stringPath:find(tostring(pl.UserId),1,true) then
+                return pl.Name
+            end
+        end
+        return nil
+    end
+    local function scanReplionTable(data,from,owner)
+        local records={}
+        if type(data)~='table' then return records,{} end
+        local rootKeys={}
+        for k in pairs(data) do
+            if #rootKeys<65 then rootKeys[#rootKeys+1]=tostring(k):sub(1,75) end
+        end
+        local checked=0
+        local seen={}
+        local function walk(node,path,depth)
+            if type(node)~='table' or seen[node] or depth>7
+                or checked>=2200 or #records>120 then return end
+            seen[node]=true
+            for k,v in pairs(node) do
+                checked=checked+1
+                if checked>=2200 then break end
+                local key=tostring(k)
+                local nextPath={table.unpack(path)}
+                nextPath[#nextPath+1]=key
+                local lowered=key:lower()
+                local valueType=type(v)
+                local found=skill(v)
+                local hasKey=lowered:find('ability',1,true)
+                    or lowered:find('skill',1,true)
+                    or lowered:find('equip',1,true)
+                    or lowered:find('loadout',1,true)
+                    or lowered:find('power',1,true)
+                if (hasKey or found) and valueType~='function' then
+                    if #records<120 then
+                        local briefValue=nil
+                        if valueType=='table' then
+                            local keys={}
+                            for childKey in pairs(v) do
+                                if #keys<14 then keys[#keys+1]=tostring(childKey) end
+                            end
+                            briefValue={type='table',keys=keys}
+                        elseif valueType=='string' or valueType=='number'
+                            or valueType=='boolean' then
+                            briefValue=tostring(v):sub(1,110)
+                        else
+                            briefValue=valueType
+                        end
+                        records[#records+1]={
+                            path=table.concat(nextPath,'.'):sub(1,260),
+                            owner=ownerFromPath(nextPath) or owner,
+                            skill=found,value=briefValue
+                        }
+                    end
+                end
+                if valueType=='table' then walk(v,nextPath,depth+1) end
+            end
+        end
+        walk(data,{from},0)
+        return records,rootKeys
+    end
+    local function inspectReplion(replion,source)
+        if type(replion)~='table' then return end
+        local known=observedReplions[replion]
+        if known then return end
+        observedReplions[replion]=true
+        replionCount=replionCount+1
+        local key='replication'..tostring(replionCount)
+        local obj={source=source,firstAt=os.clock(),fields={}}
+        for _,field in ipairs({'Channel','Id','ID','Name','Tags'}) do
+            local ok,value=pcall(function() return replion[field] end)
+            if ok and (type(value)=='string' or type(value)=='number') then
+                obj.fields[field]=tostring(value):sub(1,80)
+            elseif ok and field=='Tags' and type(value)=='table' then
+                local tags={}
+                for k,v in pairs(value) do
+                    if #tags>=18 then break end
+                    if type(v)=='string' then
+                        tags[#tags+1]=v:sub(1,80)
+                    elseif type(k)=='string' then
+                        tags[#tags+1]=k:sub(1,80)
+                    end
+                end
+                obj.fields.Tags=tags
+            end
+        end
+        local ok,data=pcall(function()
+            if type(replion.Get)=='function' then
+                return replion:Get()
+            end
+            return replion.Data
+        end)
+        if ok then
+            local owner=obj.fields.Channel or obj.fields.Id or nil
+            obj.matches,obj.rootKeys=scanReplionTable(data,source,owner)
+            obj.dataType=type(data)
+        else
+            obj.error=tostring(data):sub(1,100)
+        end
+        state.replion.observations[key]=obj
+        if type(replion.OnDataChange)=='function' then
+            local worked,connection=pcall(function()
+                return replion:OnDataChange(function(newData,path)
+                    if not active or #state.replion.events>=100 then return end
+                    local pieces={}
+                    if type(path)=='table' then
+                        for _,value in ipairs(path) do
+                            pieces[#pieces+1]=tostring(value):sub(1,90)
+                        end
+                    end
+                    local title=table.concat(pieces,'.')
+                    local itemSkill=skill(newData)
+                    local relevant=itemSkill
+                        or title:lower():find('ability',1,true)
+                        or title:lower():find('skill',1,true)
+                        or title:lower():find('equip',1,true)
+                        or title:lower():find('loadout',1,true)
+                    if relevant then
+                        state.replion.events[#state.replion.events+1]={
+                            from=key,at=os.clock(),path=title:sub(1,230),
+                            owner=ownerFromPath(pieces),
+                            ability=itemSkill,
+                            value=(type(newData)=='string' or
+                                type(newData)=='number')
+                                and tostring(newData):sub(1,120)
+                                or type(newData)
+                        }
+                    end
+                end)
+            end)
+            if worked and connection then
+                cn[#cn+1]=connection
+            end
+        end
+    end
+    local function scanReplionChannels()
+        if not replionClient then return end
+        for _,channel in ipairs(channelNames) do
+            local ok,r=pcall(function()
+                return replionClient:GetReplion(channel)
+            end)
+            if ok and r then
+                state.replion.channels[channel]=true
+                inspectReplion(r,'GetReplion:'..channel)
+            end
+        end
+        -- Canais de jogador podem usar nomes, IDs ou prefixos.
+        for _,pl in ipairs(P:GetPlayers()) do
+            for _,channel in ipairs({
+                pl.Name,tostring(pl.UserId),
+                'Data/'..pl.UserId,'PlayerData/'..pl.UserId,
+                'Player_'..pl.UserId
+            }) do
+                local ok,r=pcall(function()
+                    return replionClient:GetReplion(channel)
+                end)
+                if ok and r then
+                    state.replion.channels[channel]=true
+                    inspectReplion(r,'GetReplion:'..channel)
+                end
+            end
+        end
+    end
+    local function setupReplion()
+        local pkg=R:FindFirstChild('Packages')
+        local module=pkg and pkg:FindFirstChild('replion')
+        if not module or not module:IsA('ModuleScript') then
+            replionError('ReplicatedStorage.Packages.replion not found')
+            return
+        end
+        local ok,export=pcall(require,module)
+        if not ok then
+            replionError('require replion: '..tostring(export))
+            return
+        end
+        if type(export)~='table' then
+            replionError('replion export is '..type(export))
+            return
+        end
+        state.replion.loaded=true
+        state.replion.moduleFields={}
+        for k in pairs(export) do
+            if #state.replion.moduleFields<40 then
+                state.replion.moduleFields[#state.replion.moduleFields+1]=tostring(k)
+            end
+        end
+        replionClient=export.Client
+        if type(replionClient)~='table' then
+            replionError('Client object missing or not a table')
+            return
+        end
+        state.replion.clientFields={}
+        for k,v in pairs(replionClient) do
+            if #state.replion.clientFields<65 then
+                state.replion.clientFields[#state.replion.clientFields+1]={
+                    field=tostring(k),kind=type(v)}
+            end
+            -- Alguns builds disponibilizam caches de replions atuais.
+            -- Inspeciona apenas os objetos, sem modificar o cache.
+            if type(v)=='table' and tostring(k):lower():find('replion') then
+                local count=0
+                for id,object in pairs(v) do
+                    if count>=35 then break end
+                    count=count+1
+                    if type(object)=='table' and
+                        (type(object.Get)=='function' or type(object.Data)=='table') then
+                        inspectReplion(object,'Client.'..tostring(k)..'.'..tostring(id))
+                    end
+                end
+            end
+        end
+        if type(replionClient.OnReplionAdded)=='function' then
+            local worked,connection=pcall(function()
+                return replionClient:OnReplionAdded(function(replica)
+                    if active then inspectReplion(replica,'OnReplionAdded') end
+                end)
+            end)
+            if worked and connection then cn[#cn+1]=connection
+            elseif not worked then replionError('OnReplionAdded: '..tostring(connection)) end
+        end
+        scanReplionChannels()
+    end
+
     local function gcInspect(byId)
         if type(getgc)~='function' then
             return {supported=false}
@@ -259,6 +503,7 @@ return (function()
             local success,gc=pcall(gcInspect,byId)
             if success then result.gc=gc else err('GC: '..tostring(gc)) end
         end
+        scanReplionChannels()
         state.snapshots[#state.snapshots+1]=result
         if #state.snapshots>9 then table.remove(state.snapshots,1) end
         print('[VB PreMatch] '..reason..': '..#result.players..' jogadores examinados')
@@ -346,6 +591,7 @@ return (function()
     previous.VBPreMatchProbe={Report=state,Scan=capture,Save=save,Stop=stop}
     packages()
     watch()
+    setupReplion()
     capture('EXECUCAO')
     cn[#cn+1]=me:GetAttributeChangedSignal('InRound'):Connect(function()
         task.delay(0.2,function()
@@ -368,6 +614,6 @@ return (function()
             if active then capture('PERIODICA') end
         end)
     end)
-    print('[VB PreMatch] Execute antes do inicio do round. F6 le novamente; F7 salva.')
+    print('[VB PreMatch v2] Replion + interfaces antes do round. F6 le; F7 salva.')
     return previous.VBPreMatchProbe
 end)()
