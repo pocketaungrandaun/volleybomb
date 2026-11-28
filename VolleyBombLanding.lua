@@ -921,6 +921,8 @@ local function ingestBallState(raw)
             magnetTrack.LastGroundAt=nil
             magnetTrack.LastLiveRawTime=nil
             magnetTrack.LastLiveCalc=nil
+            magnetTrack.FilteredPoint=nil
+            magnetTrack.FilteredAt=nil
         end
         if hasMagnet or hadMagnet then
             -- Ao pegar ou soltar a bola, limpa AMOSTRAS antigas.
@@ -1093,7 +1095,15 @@ local function updateBallMotion()
                         and track.RawPart==part and last
                         and now-last.T<0.20
                         and (last.P-part.Position).Magnitude<12
-                    if not continuous then table.clear(samples) end
+                    if not continuous then
+                        table.clear(samples)
+                        track.LastLivePoint=nil
+                        track.LastLiveNormal=nil
+                        track.LastLiveCalc=nil
+                        track.LastLiveRawTime=nil
+                        track.FilteredPoint=nil
+                        track.FilteredAt=nil
+                    end
                     track.RawTime=s.Raw.Time
                     track.RawState=s.Raw
                     track.RawPart=part
@@ -1106,7 +1116,7 @@ local function updateBallMotion()
                     end
                 end
 
-                samples[#samples+1]={P=part.Position,T=now}
+                samples[#samples+1]={P=part.Position,T=now,ST=W:GetServerTimeNow()}
                 while #samples>15 or (#samples>2 and now-samples[1].T>0.48) do
                     table.remove(samples,1)
                 end
@@ -1165,6 +1175,57 @@ end
 
 
 
+-- Usa a previsao de impacto do proprio jogo somente quando ela
+-- coincide com duas posicoes observadas da bola especial.
+local function nativeTornadoImpact(arena,raw,samples)
+    if not nativeBall or raw.Tornado==nil or raw.Magnet~=nil
+        or raw.Reflect==true or type(raw.Time)~='number'
+        or type(raw.EndTime)~='number'
+        or raw.EndTime<=raw.Time+0.02
+        or typeof(raw.Normal)~='Vector3'
+        or raw.Normal.Y<0.88
+        or typeof(raw.Velocity)~='Vector3' then return nil end
+    local now=W:GetServerTimeNow()
+    local remaining=raw.EndTime-now
+    if remaining<0.03 or remaining>5 then return nil end
+    local checks=0
+    for i=#samples,math.max(1,#samples-5),-3 do
+        local sample=samples[i]
+        if sample and sample.ST
+            and sample.ST>=raw.Time-0.08
+            and sample.ST<=raw.EndTime+0.08 then
+            local time=math.clamp(sample.ST,raw.Time,raw.EndTime)
+            local ok,expected=pcall(nativeBall.At,raw,time)
+            if not ok or typeof(expected)~='Vector3' then return nil end
+            local tolerance=math.clamp(3.5+raw.Velocity.Magnitude*0.075,4,12)
+            if (expected-sample.P).Magnitude>tolerance then return nil end
+            checks=checks+1
+        end
+    end
+    if checks<2 then return nil end
+    local ok,impact=pcall(nativeBall.At,raw,raw.EndTime)
+    if not ok or typeof(impact)~='Vector3' then return nil end
+    local good,ground=pcall(nativeBall.Ground,impact)
+    if not good or typeof(ground)~='Vector3'
+        or math.abs(impact.Y-ground.Y)>7 then return nil end
+    local arenaZones=zones[arena]
+    if #arenaZones>0 then
+        local inside=false
+        for _,zone in ipairs(arenaZones) do
+            if typeof(zone)=='Instance' and zone:IsA('BasePart') and zone.Parent then
+                local lp=zone.CFrame:PointToObjectSpace(ground)
+                if math.abs(lp.X)<zone.Size.X*0.5+7
+                    and math.abs(lp.Z)<zone.Size.Z*0.5+7 then
+                    inside=true
+                    break
+                end
+            end
+        end
+        if not inside then return nil end
+    end
+    return ground,raw.Normal,remaining
+end
+
 local function liveFloor(arena)
     local track=liveTracks[arena]
     local s=liveState(arena)
@@ -1221,9 +1282,20 @@ local function liveFloor(arena)
     end
     if floorY then track.FloorY=floorY end
 
-    
-    
-    
+    local nativePoint,nativeNormal,nativeDelay=nativeTornadoImpact(arena,s.Raw,q)
+    if nativePoint then
+        track.FilteredPoint=nativePoint
+        track.FilteredAt=now
+        track.LastLivePoint=nativePoint
+        track.LastLiveNormal=nativeNormal
+        track.LastLiveDelay=nativeDelay
+        track.LastGroundPoint=nativePoint
+        track.LastGroundNormal=nativeNormal
+        track.LastGroundAt=now
+        track.LastGroundRawTime=s.Raw.Time
+        return nativePoint,nativeNormal,nativeDelay
+    end
+
     local v=Vector3.zero
     local acc=Vector3.zero
     local measured=false
@@ -1272,6 +1344,19 @@ local function liveFloor(arena)
     
     if not measured and #q<3 and typeof(raw.Target)~='Vector3' then
         return nil
+    end
+    -- A velocidade media filtra as voltas curtas da espiral.
+    if raw.Tornado~=nil and #q>=6 then
+        local earlier=q[math.max(1,#q-12)]
+        local dt=last.T-earlier.T
+        if dt>=0.17 then
+            local mean=(last.P-earlier.P)/dt
+            if mean.Magnitude<320 then
+                v=Vector3.new(mean.X*0.78+v.X*0.22,v.Y,
+                    mean.Z*0.78+v.Z*0.22)
+                acc=acc*0.15
+            end
+        end
     end
     local t=0.55
     if floorY then
@@ -1353,6 +1438,24 @@ local function liveFloor(arena)
         end
     end
     
+    -- Suaviza o ponto sem impedir correcoes rapidas perto da queda.
+    if raw.Tornado~=nil or s.AbilitySpecial then
+        local previous=track.FilteredPoint
+        local previousAt=track.FilteredAt
+        if previous and previousAt and now-previousAt<0.28
+            and math.abs(previous.Y-finalPos.Y)<10 then
+            local dt=math.max(0,now-previousAt)
+            local tau=t>0.55 and 0.21 or (t>0.22 and 0.13 or 0.045)
+            local weight=math.clamp(1-math.exp(-dt/tau),0.08,1)
+            local filtered=previous:Lerp(finalPos,weight)
+            finalPos=Vector3.new(filtered.X,finalPos.Y,filtered.Z)
+        end
+        track.FilteredPoint=finalPos
+        track.FilteredAt=now
+    else
+        track.FilteredPoint=nil
+        track.FilteredAt=nil
+    end
     track.LastLivePoint=finalPos
     track.LastLiveNormal=finalNormal
     track.LastLiveDelay=t
