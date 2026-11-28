@@ -391,7 +391,7 @@ local function liveState(arena)
     if s then return s end
     s=states[arena]
     if not s or not s.Raw then return nil end
-    local special=s.Raw.Tornado~=nil or s.Raw.Magnet~=nil
+    local special=s.AbilitySpecial or s.Raw.Tornado~=nil or s.Raw.Magnet~=nil
     if not special then return nil end
     if type(s.RawEndTime)~='number' or s.RawEndTime==math.huge then return nil end
     if W:GetServerTimeNow()>s.RawEndTime+0.60 then return nil end
@@ -1027,7 +1027,7 @@ local function ingestBallState(raw)
         BounceEstimated=estimated,NativePrediction=nativePrediction,BounceCount=bounces,
         FirstImpactPoint=firstPoint,FirstImpactNormal=firstNormal,
         FirstIncoming=firstVelocity,FirstSurface=firstSurface,
-        MotionUncertain=abilityTagged(raw),Live=false,
+        MotionUncertain=abilityTagged(raw),AbilitySpecial=abilityTagged(raw),Live=false,
         ImpactSpeed=velocity and velocity.Magnitude or 0,
         FallSpeed=velocity and -velocity.Y or 0,Zones=zoneList,
         HadMagnet=raw.Magnet~=nil}
@@ -1087,7 +1087,7 @@ local function updateBallMotion()
                 -- Um novo round pode substituir o modelo, mesmo com
                 -- o mesmo valor Time recebido anteriormente.
                 if track.RawState~=s.Raw or track.RawPart~=part then
-                    local special=s.Raw.Tornado~=nil or s.Raw.Magnet~=nil
+                    local special=s.AbilitySpecial or s.Raw.Tornado~=nil or s.Raw.Magnet~=nil
                     local last=samples[#samples]
                     local continuous=special and track.PreviousSpecial
                         and track.RawPart==part and last
@@ -1288,8 +1288,9 @@ local function liveFloor(arena)
             t=0.08
         end
     else
-        local remaining=raw.EndTime-W:GetServerTimeNow()
-        if type(remaining)=='number' and remaining>0 and remaining<6 then
+        local remaining=type(raw.EndTime)=='number'
+            and (raw.EndTime-W:GetServerTimeNow()) or nil
+        if remaining and remaining>0 and remaining<6 then
             t=math.clamp(remaining,0.15,4.0)
         end
     end
@@ -1336,15 +1337,20 @@ local function liveFloor(arena)
         finalPos,finalNormal=landing.Position,landing.Normal
         floorY=landing.Position.Y
         track.FloorY=floorY
-    elseif floorY and chosen and minimum<=9 then
+    elseif floorY and (not chosen or minimum<=9) then
         
         
         finalPos=Vector3.new(guessed.X,floorY,guessed.Z)
         finalNormal=Vector3.yAxis
     else
-        
-        
-        return nil
+        -- O Tornado pode cruzar zonas com piso nao-colidivel.
+        -- Usa a altura real ja observada, sem fabricar altura de outra arena.
+        if floorY and (not chosen or minimum<=9) then
+            finalPos=Vector3.new(guessed.X,floorY,guessed.Z)
+            finalNormal=Vector3.yAxis
+        else
+            return nil
+        end
     end
     
     track.LastLivePoint=finalPos
