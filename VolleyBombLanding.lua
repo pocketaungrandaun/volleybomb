@@ -462,6 +462,38 @@ local function updateMarkers()
         end
     end
 end
+-- O efeito Tornado ja replica o destino em raw.Target.
+-- Ball.At(raw, raw.EndTime) termina exatamente nesse Target,
+-- portanto nao precisa aguardar samples da bola visual.
+local function tornadoFloorForecast(raw,arena)
+    if type(raw)~='table' or raw.Tornado==nil or raw.Magnet~=nil
+        or raw.Dead or typeof(raw.Target)~='Vector3'
+        or type(raw.Time)~='number' or type(raw.EndTime)~='number'
+        or raw.EndTime<=raw.Time
+        or raw.EndTime==math.huge then return nil end
+
+    local target=raw.Target
+    local ground=nil
+    if nativeBall and type(nativeBall.Ground)=='function' then
+        local ok,pos=pcall(nativeBall.Ground,target)
+        if ok and typeof(pos)=='Vector3'
+            and math.abs(pos.Y-target.Y)<15 then
+            ground=pos
+        end
+    end
+    if not ground then
+        local hit=predictionCast(target+Vector3.new(0,8,0),
+            Vector3.new(0,-70,0),params())
+        if hit and hit.Normal.Y>=0.86 then
+            ground=hit.Position
+        end
+    end
+    -- O dado de destino deve ser mostrado ate se o piso nao for
+    -- detectavel por raycast (por exemplo, em areas nao colidiveis).
+    ground=ground or target
+    return ground,Vector3.yAxis,0.05,nil,raw.EndTime,false,'floor',0
+end
+
 -- Previsao a partir da fisica ORIGINAL (Ball.At + Ball.Bounce).
 -- Nao reproduz rebotes com coeficientes estimados nem usa velocidade de Assembly.
 local function nativeFloorForecast(raw)
@@ -971,6 +1003,10 @@ local function ingestBallState(raw)
 
     local point,normal,error,velocity,collisionTime,reliable,surface,bounces=
         nativeFloorForecast(raw)
+    if raw.Tornado~=nil then
+        point,normal,error,velocity,collisionTime,reliable,surface,bounces=
+            tornadoFloorForecast(raw,arena)
+    end
     local nativePrediction=point~=nil
     bounces=bounces or 0
     if not nativePrediction then
@@ -1386,6 +1422,14 @@ correctedState=function(arena)
     -- liveFloor nem o ultimo ponto salvo enquanto estiver ativo.
     if s.Raw and s.Raw.Magnet~=nil then
         return nil
+    end
+    -- O Target vem pronto no pacote, antes de qualquer amostra de voo.
+    -- Nao substitui esse destino exato por extrapolacao da espiral.
+    if s.Raw and s.Raw.Tornado~=nil and s.NativePrediction
+        and s.Point and s.Surface=='floor'
+        and type(s.RawEndTime)=='number'
+        and W:GetServerTimeNow()<=s.RawEndTime+0.08 then
+        return s
     end
     local special=s.AbilitySpecial or (s.Raw and
         (s.Raw.Tornado~=nil or s.Raw.Magnet~=nil))
