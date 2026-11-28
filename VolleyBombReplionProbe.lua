@@ -1,4 +1,4 @@
--- VolleyBomb Replion Probe 2.1 (separate from v1 report)
+-- VolleyBomb Replion Probe 2.2 (direct Replion Client API support)
 -- Investiga se habilidade equipada dos OUTROS jogadores e replicada
 -- ANTES do primeiro uso. Nao altera fisica, GUI do jogo ou remotes.
 -- F6 = nova leitura, F7 = salvar relatorio.
@@ -11,7 +11,7 @@ return (function()
     local H=game:GetService('HttpService')
     local me=P.LocalPlayer
     local state={
-        format='VolleyBombReplionProbe/2.1',
+        format='VolleyBombReplionProbe/2.2',
         replion={loaded=false,observations={},channels={},events={},errors={}},
         placeId=game.PlaceId,
         startedAt=os.date('!%Y-%m-%dT%H:%M:%SZ'),
@@ -352,6 +352,8 @@ return (function()
     end
     local function scanReplionChannels()
         if not replionClient then return end
+        state.replion.scanCount=(state.replion.scanCount or 0)+1
+        state.replion.lastScanAt=os.clock()
         for _,channel in ipairs(channelNames) do
             local ok,r=pcall(function()
                 return replionClient:GetReplion(channel)
@@ -401,11 +403,19 @@ return (function()
                 state.replion.moduleFields[#state.replion.moduleFields+1]=tostring(k)
             end
         end
-        replionClient=export.Client
-        if type(replionClient)~='table' then
-            replionError('Client object missing or not a table')
+        -- Neste jogo o ModuleScript retorna a API cliente DIRETAMENTE
+        -- (GetReplion, OnReplionAdded, ...), sem campo .Client.
+        -- Algumas versoes do pacote usam export.Client; suportar ambas.
+        local clientApi=(type(export.Client)=='table' and export.Client)
+            or export
+        if type(clientApi.GetReplion)~='function'
+            or type(clientApi.OnReplionAdded)~='function' then
+            replionError('Replion API missing GetReplion/OnReplionAdded')
             return
         end
+        replionClient=clientApi
+        state.replion.apiMode=clientApi==export
+            and 'direct ModuleScript return' or 'export.Client'
         state.replion.clientFields={}
         for k,v in pairs(replionClient) do
             if #state.replion.clientFields<65 then
@@ -432,8 +442,12 @@ return (function()
                     if active then inspectReplion(replica,'OnReplionAdded') end
                 end)
             end)
-            if worked and connection then cn[#cn+1]=connection
-            elseif not worked then replionError('OnReplionAdded: '..tostring(connection)) end
+            if worked and connection then
+                cn[#cn+1]=connection
+                state.replion.listenerConnected=true
+            elseif not worked then
+                replionError('OnReplionAdded: '..tostring(connection))
+            end
         end
         scanReplionChannels()
     end
@@ -617,6 +631,6 @@ return (function()
             if active then capture('PERIODICA') end
         end)
     end)
-    print('[VB Replion v2.1] Execute ANTES do round. F6 pesquisa; F7 salva VolleyBomb_Replion_V2_LATEST.json.')
+    print('[VB Replion v2.2] API cliente corrigida. Execute ANTES do round; F6 le; F7 salva VolleyBomb_Replion_V2_LATEST.json.')
     return previous.VBPreMatchProbe
 end)()
