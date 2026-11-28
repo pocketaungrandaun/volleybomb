@@ -1,4 +1,4 @@
--- VolleyBomb Replion Probe 3.0 (unique path and clean versioned output)
+-- VolleyBomb Replion Probe 3.1 (immediate autosave + visible save button)
 -- Investiga se habilidade equipada dos OUTROS jogadores e replicada
 -- ANTES do primeiro uso. Nao altera fisica, GUI do jogo ou remotes.
 -- F6 = nova leitura, F7 = salvar relatorio.
@@ -11,7 +11,7 @@ return (function()
     local H=game:GetService('HttpService')
     local me=P.LocalPlayer
     local state={
-        format='VolleyBombReplionProbe/3.0',
+        format='VolleyBombReplionProbe/3.1',
         replion={loaded=false,observations={},channels={},events={},errors={}},
         placeId=game.PlaceId,
         startedAt=os.date('!%Y-%m-%dT%H:%M:%SZ'),
@@ -23,6 +23,29 @@ return (function()
     }
     local active=true
     local cn={}
+    local OUTPUT='VolleyBomb_REPLION_V3_ONLY.json'
+    local statusLabel=nil
+    local panelGui=nil
+    local saves=0
+    local lastFileStatus=''
+    -- Arquivo v3 criado ANTES de inicializar o Replion. Se o codigo
+    -- falhar depois, teremos ao menos um JSON v3 com o erro de inicio.
+    do
+        local ok,json=pcall(H.JSONEncode,H,{
+            format=state.format,
+            startedAt=state.startedAt,
+            stage='BOOTSTRAP',
+            notes={'O diagnostico ainda nao terminou de inicializar'}
+        })
+        if ok and type(writefile)=='function' then
+            local saved,why=pcall(writefile,OUTPUT,json)
+            lastFileStatus=saved and 'BOOTSTRAP salvo'
+                or ('Falha bootstrap: '..tostring(why))
+        elseif type(writefile)~='function' then
+            lastFileStatus='writefile indisponivel'
+        end
+        print('[VB Replion v3.1] '..lastFileStatus..' | '..OUTPUT)
+    end
     local previous=type(getgenv)=='function' and getgenv() or _G
     -- Interrompe a instancia antiga, caso tenha permanecido rodando.
     for _,globalName in ipairs({'VBPreMatchProbe','VBReplionProbeV3'}) do
@@ -578,24 +601,71 @@ return (function()
     end
     local function save()
         if not active then return end
-        capture('SALVAR')
+        local captured,captureErr=pcall(capture,'SALVAR')
+        if not captured then err('capture: '..tostring(captureErr)) end
         state.savedAt=os.date('!%Y-%m-%dT%H:%M:%SZ')
+        state.saveAttempts=(state.saveAttempts or 0)+1
         local ok,encoded=pcall(H.JSONEncode,H,state)
-        if not ok then err('JSON: '..tostring(encoded));return end
-        local filename='VolleyBomb_REPLION_V3_ONLY.json'
+        if not ok then
+            err('JSON: '..tostring(encoded))
+            warn('[VB Replion v3.1] erro ao gerar JSON: '..tostring(encoded))
+            return
+        end
         if type(writefile)=='function' then
-            local saved,why=pcall(writefile,filename,encoded)
+            local saved,why=pcall(writefile,OUTPUT,encoded)
             if saved then
-                print('[VB PreMatch] Relatorio salvo: '..filename)
+                saves=saves+1
+                lastFileStatus='SALVO '..tostring(saves)..'x'
+                print('[VB Replion v3.1] SALVO '..OUTPUT..
+                    ' ('..tostring(#encoded)..' bytes)')
             else
-                warn('[VB PreMatch] Falha ao salvar: '..tostring(why))
+                lastFileStatus='ERRO DE WRITEFILE'
+                warn('[VB Replion v3.1] '..tostring(why))
             end
         elseif type(setclipboard)=='function' then
-            pcall(setclipboard,encoded)
-            print('[VB PreMatch] Relatorio copiado')
+            local copied=pcall(setclipboard,encoded)
+            lastFileStatus=copied and 'JSON COPIADO' or 'ERRO DE CLIPBOARD'
+            print('[VB Replion v3.1] '..lastFileStatus)
         else
-            warn('[VB Replion V3] use getgenv().VBReplionProbeV3.Report')
+            lastFileStatus='SEM WRITEFILE OU CLIPBOARD'
+            warn('[VB Replion v3.1] getgenv().VBReplionProbeV3.Report')
         end
+        if statusLabel then
+            statusLabel.Text='REPLION V3.1 | '..lastFileStatus
+        end
+    end
+    local function showSaveButton()
+        local pg=me:FindFirstChildOfClass('PlayerGui')
+            or me:WaitForChild('PlayerGui',8)
+        if not pg then return end
+        local old=pg:FindFirstChild('VBReplionProbeV3HUD')
+        if old then pcall(function() old:Destroy() end) end
+        local gui=Instance.new('ScreenGui')
+        gui.Name='VBReplionProbeV3HUD'
+        gui.ResetOnSpawn=false
+        gui.IgnoreGuiInset=true
+        gui.DisplayOrder=250
+        gui.Parent=pg
+        panelGui=gui
+        local button=Instance.new('TextButton')
+        button.Name='SaveReport'
+        button.AnchorPoint=Vector2.new(1,0)
+        button.Position=UDim2.new(1,-12,0,48)
+        button.Size=UDim2.fromOffset(275,38)
+        button.BackgroundColor3=Color3.fromRGB(30,34,46)
+        button.TextColor3=Color3.fromRGB(246,246,250)
+        button.Font=Enum.Font.GothamMedium
+        button.TextSize=12
+        button.Text='REPLION V3.1 | SALVAR V3'
+        button.AutoButtonColor=true
+        button.Parent=gui
+        local corner=Instance.new('UICorner')
+        corner.CornerRadius=UDim.new(0,8)
+        corner.Parent=button
+        statusLabel=button
+        cn[#cn+1]=button.MouseButton1Click:Connect(function()
+            task.spawn(save)
+        end)
     end
     local function stop()
         if not active then return end
@@ -604,6 +674,7 @@ return (function()
         for _,conn in ipairs(cn) do
             pcall(function()conn:Disconnect()end)
         end
+        if panelGui then pcall(function() panelGui:Destroy() end) end
         if previous.VBReplionProbeV3
             and previous.VBReplionProbeV3.Report==state then
             previous.VBReplionProbeV3=nil
@@ -616,18 +687,25 @@ return (function()
     if not state.replion.loaded then
         warn('[VB Replion v2.1] modulo Replion nao carregou; confira errors no JSON')
     end
-    capture('EXECUCAO')
+    local startOK,startErr=pcall(capture,'EXECUCAO')
+    if not startOK then err('startup capture: '..tostring(startErr)) end
+    -- Salva IMEDIATAMENTE e disponibiliza botao na tela.
+    save()
+    local uiOK,uiErr=pcall(showSaveButton)
+    if not uiOK then err('create button: '..tostring(uiErr)) end
     cn[#cn+1]=me:GetAttributeChangedSignal('InRound'):Connect(function()
         task.delay(0.2,function()
             if active then capture('TROCA DE ARENA') end
         end)
     end)
     cn[#cn+1]=U.InputBegan:Connect(function(input,processed)
+        if input.KeyCode==Enum.KeyCode.F7 then
+            task.spawn(save)
+            return
+        end
         if processed then return end
         if input.KeyCode==Enum.KeyCode.F6 then
             task.spawn(function()capture('F6')end)
-        elseif input.KeyCode==Enum.KeyCode.F7 then
-            task.spawn(save)
         end
     end)
     local nextPoll=os.clock()+9
@@ -635,9 +713,13 @@ return (function()
         if not active or os.clock()<nextPoll then return end
         nextPoll=os.clock()+13
         task.defer(function()
-            if active then capture('PERIODICA') end
+            if active then
+                local ok,e=pcall(capture,'PERIODICA')
+                if not ok then err('periodic capture: '..tostring(e)) end
+                save()
+            end
         end)
     end)
-    print('[VB Replion v3.0] CONFIRA v3.0. F6 consulta canais; F7 salva VolleyBomb_REPLION_V3_ONLY.json.')
+    print('[VB Replion v3.1] AUTO SAVE + BOTAO; F7 salva '..OUTPUT)
     return previous.VBReplionProbeV3
 end)()
